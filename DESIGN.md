@@ -8,7 +8,7 @@ Coding agents (Claude Code, Command Code, Cursor) show raw model "thinking" text
 
 ## 2. Product
 
-A native desktop app (Cursor/Claude Code desktop style). The OpenCode core runs locally, doing file edits, shell, git, MCP invisibly. User never touches a terminal. During AI "thinking" time, a sponsor banner renders in the response area. Real HTML (Chromium/Tauri webview), so any web ad creative works.
+A native desktop app (Cursor/Claude Code desktop style). The DevAgent MAO engine runs locally, doing file edits, shell, git, MCP invisibly. User never touches a terminal. During AI "thinking" time, a sponsor banner renders in the response area. Real HTML (Chromium/Tauri webview), so any web ad creative works.
 
 Two surfaces removed: no terminal CLI, no OSC 8 text ads. Single desktop app only.
 
@@ -17,7 +17,7 @@ Two surfaces removed: no terminal CLI, no OSC 8 text ads. Single desktop app onl
 ```
 DevAgent Desktop (Electron/Tauri)
   ├─ React UI · file tree · editor · chat · sponsor banner
-  └─ OpenCode core (MIT fork) — local FS/Shell/Git/MCP
+  └─ jcode fork (MIT) — local FS/Shell/Git/MCP agent runtime
         ├─ OpenRouter  → FREE tier (DeepSeek V4 Flash, $0.09/$0.18)
         └─ Command Code Provider → PAID tiers (V4 Pro 4x, MiMo 99%, MiniMax 2.7x)
   └─ Backend (FastAPI) — Auth · Billing · Ads · Payout · Model routing
@@ -87,7 +87,7 @@ Free tier via OpenRouter eliminates Command Code dependency for free users. Paid
 
 ## 9. Build Sequence (zero funding)
 
-1. **Fork OpenCode**, add sponsor banner to desktop UI. BYOK only. Ship free.
+1. **Fork jcode**, add sponsor banner to desktop UI. BYOK only. Ship free.
 2. **Playwire integration** + first sponsor deal. $15 Provider plan + $30/mo server.
 3. **Free tier live**: OpenRouter, V4 Flash, $10 credit pool.
 4. **Stripe subs** + ad revenue splits (account credit).

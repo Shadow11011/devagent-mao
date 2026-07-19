@@ -5,6 +5,19 @@
 ## 1. Stack
 
 - **jcode** (Rust, MIT, github.com/1jehuang/jcode) — forked agent runtime. Swarm mode REMOVED. Used as the agent execution engine inside each sandbox (file edits, shell, git, provider routing, TUI stripped to headless).
+
+### Why jcode over OpenCode
+
+| Factor | jcode | OpenCode |
+|--------|-------|----------|
+| RAM (1 session) | 27.8 MB | 371.5 MB (13.4× more) |
+| RAM (10 sessions) | 117 MB | 3,237 MB (27.7× more) |
+| Time to first frame | 14 ms | 1,036 ms (74× slower) |
+| Extra RAM per session | ~10 MB | ~318 MB (32× more) |
+| Built-in memory | semantic vector graph | none |
+| Self-dev mode | edits own source, rebuilds | no |
+
+Decisive for our MAO: (1) RAM — spawning 5+ sandboxes per task, OpenCode would OOM a laptop at 3.2GB/10 sessions vs jcode's 117MB; (2) built-in memory graph covers 80% of cognee's role, adaptable to emit OKF; (3) 74× faster startup matches the "ping" sandbox claim; (4) self-dev mode speeds fork iteration.
 - **cognee** (Python, Apache-2.0, github.com/topoteretes/cognee) — knowledge graph memory. Indexes OKF docs, serves similarity recall to mini-models.
 - **OKF** (Open Knowledge Format, Google standard, June 2026) — markdown + YAML frontmatter docs. Written by orchestrator as canonical memory on success AND failure.
 - **Local sandbox system** (friend's build) — deploys a sandbox on the user's laptop in ~a ping. Orchestrator calls it via its API/CLI to spin up/tear down environments. No cloud cost, no network latency.
