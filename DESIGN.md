@@ -29,14 +29,14 @@ DevAgent Desktop (Electron/Tauri)
 
 ## 4. Models & Pricing
 
-| Tier | Price | API credit | Models | Ad split |
-|------|-------|-----------|--------|----------|
-| Free | $0 | $10/mo | DeepSeek V4 Flash (OpenRouter) | none |
-| Starter | $5/mo | $5 | all open-source | 15% |
-| Pro | $20/mo | $20 | V4 Pro + MiniMax | 30% |
-| Max | $50/mo | $50 | all models | 50% |
+| Tier | Price | API credit | Models | Ads | Ad split |
+|------|-------|-----------|--------|-----|----------|
+| Free | $0 | $10/mo V4 Flash | DeepSeek V4 Flash (OpenRouter) | none | none |
+| Starter | $5/mo | $5 + everything in Free* | all open-source | on (opt-out available) | 15% |
+| Pro | $20/mo | $20 + everything in Free* | V4 Pro + MiniMax | on (opt-out available) | 30% |
+| Max | $50/mo | $50 + everything in Free* | all models | on (opt-out available) | 50% |
 
-Credit-capped: max loss per user = subscription price. Exhausted credit → auto-downgrade to V4 Flash or throttle. No overage.
+*Every paid tier includes the Free tier benefits (the $10 V4 Flash credit) UNLESS the user opts out of ads. Opting out of ads removes the $10 V4 Flash credit — paid users keep only their tier's API credit + model access. Max loss per user = subscription price. Exhausted credit → auto-downgrade to V4 Flash or throttle. No overage.
 
 Free tier via OpenRouter eliminates Command Code dependency for free users. Paid tiers use Command Code for deal multipliers (V4 Pro 4x, MiMo 99% off).
 
