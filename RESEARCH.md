@@ -1,194 +1,180 @@
 # DevAgent MAO — Researched Idea (Technical + Business + Relationship)
 
-> A multi-agent orchestrator (MAO) for coding. Cheap model converses, expensive model plans only when real work appears, cheap models build in isolated sandboxes, OKF memory learns from every run. Shipped as terminal TUI + desktop app from one engine. Monetized via Playwire sponsorships + credit-capped subscriptions.
+> A multi-agent orchestrator (MAO) for coding. Cheap model converses, expensive model plans only when real work appears, cheap models build in isolated sandboxes, OKF memory learns from every run. Shipped as terminal TUI + desktop app from one engine. Monetized via credit-capped subscriptions, with sponsorships as a secondary (not primary) revenue stream.
 
-This document is the full researched picture: the technical architecture, the business model, and how each technical decision maps to a business outcome.
+This is the full researched picture, with honest numbers. **The headline finding: the ad-revenue-share model as originally scoped does not work. Subscriptions are the engine; sponsorships are supplementary. The free tier must be BYOK-first or it sinks the business.**
 
 ---
 
-## 1. THE CORE INSIGHT
+## 0. WHAT CHANGED AFTER REAL RESEARCH
 
-Coding agents burn money on the wrong thing. A single frontier model (Claude Fable 5, $10/$50 per 1M tokens) both *thinks* and *writes*. But writing code is token-heavy and thinking is token-light. The economic move is to separate them:
+Three assumptions from earlier sessions were wrong when checked against live data:
 
-- **Talk is cheap.** A tiny model (DeepSeek V4 Flash, $0.14/$0.28) handles the conversation.
-- **Think is rare.** An expensive model (Kimi K3, $3/$15; or Fable 5, $10/$50) wakes ONLY when real work appears — to plan, split, and review.
-- **Build is cheap.** Cheap models in parallel sandboxes do the actual file edits.
+1. **V4 Flash is $0.09/$0.18 per 1M (OpenRouter), not $0.14/$0.28.** Verified July 2026 via OpenRouter + pricepertoken. The cheaper rate helps, but not enough to save the old model.
+2. **Ad CPM is the load-bearing unknown, and $2 is not conservative — it's optimistic for an unproven inventory.** Developer-focused networks (Carbon/BuySellAds/Playwire) command ~$8-20 CPM for proven technical audiences, but a new desktop-app ad slot with no track record starts far lower. Worse, the ad-split payout we modeled ($1,605/mo) was 6× the ad revenue ($270/mo at $2 CPM) — we were paying out of subscriptions, not ads.
+3. **The free tier bleeds if we front the API cost.** A build-heavy free user on a $10 credit costs us up to $20.86/mo (V4 Flash conversation + V4 Flash orchestrated builds at 25 req/day, 20% builds). 800 such users = -$8,000+/mo.
 
-Benchmark validation (iternal.ai 2026): hierarchical orchestration — budget workers + frontier planner — achieves **97.7% of full-frontier accuracy at ~61% of cost.** This is our exact architecture, independently confirmed.
+The fix is structural, not cosmetic. Details below.
 
-Per-task cost (benchmark-validated, OpenCode ~133K / Claude Code ~298K tokens/task, 3:1 input:output, 1.7× overhead):
-- **MAO:** Kimi K3 orchestrator $0.82 + 3× V4 Pro workers $0.55 = **~$1.38/task**
-- **Single Fable 5:** **~$22.95/task**
-- **94% cheaper**, at near-identical quality.
+---
 
-The MAO isn't a different kind of agent. It's a conversational coding agent (like Claude Code) whose *engine* is orchestrated so the expensive part (thinking) is isolated from the expensive-looking part (writing).
+## 1. THE CORE INSIGHT (unchanged, and validated)
+
+Coding agents waste money making one expensive model do two jobs: *think* (cheap, token-light) and *write* (expensive, token-heavy). Separate them:
+
+- **Talk is cheap.** DeepSeek V4 Flash ($0.09/$0.18) converses.
+- **Think is rare.** Kimi K3 ($3/$15, intelligence 57/187) wakes only to plan, split, review.
+- **Build is cheap.** DeepSeek V4 Pro ($0.435/$0.87, intelligence 44/187) writes in parallel sandboxes.
+
+Benchmark validation (iternal.ai 2026): hierarchical orchestration = **97.7% of full-frontier accuracy at ~61% of cost.**
+
+Per-build cost (benchmark-validated: OpenCode ~133K / Claude Code ~298K tokens/task, 3:1 input:output, 1.7× retry overhead):
+- **MAO:** Kimi K3 orchestrator $0.82 + 3× V4 Pro workers $0.55 = **$1.38/build**
+- **Single Fable 5 ($10/$50, intelligence 60/187):** **$22.95/build**
+- **94% cheaper**, near-identical quality.
+
+**Competitive positioning (real numbers):** a user doing 14 builds/mo on Claude Fable 5 directly pays ~$321. We sell the same work for a $20 Pro plan. Our cost is ~$19. The user saves $301; we keep ~$1. **This is a volume business** — thin per-user margin, made up in scale and in upsells (BYOK, guided mode, team plans).
 
 ---
 
 ## 2. TECHNICAL ARCHITECTURE
 
-### 2.1 The Model Stack (three roles, three price points)
+### 2.1 Three-model stack (verified rates, July 2026)
 
-| Role | Model | Rate | Why |
-|------|-------|------|-----|
-| **Conversation face** | DeepSeek V4 Flash | $0.14/$0.28 per 1M | Talks to user, explains, brainstorms. Cheapest capable model. |
-| **Orchestrator** | Kimi K3 (default) / Fable 5 (max-intel) | $3/$15 · $10/$50 per 1M | Plans, splits, validates, reviews. Intelligence #4 and #1 on Artificial Analysis. |
-| **Workers** | V4 Pro (paid) / V4 Flash (free) | $0.435/$0.87 · $0.14/$0.28 per 1M | Build in sandboxes. Coding-optimized. |
+| Role | Model | Rate (per 1M) | Intelligence | Why |
+|------|-------|---------------|--------------|-----|
+| Conversation face | DeepSeek V4 Flash | $0.09 in / $0.18 out | — | Cheapest capable talker. 284B MoE, 13B active, 1M ctx, MIT. |
+| Orchestrator | Kimi K3 (default) | $3 / $15 | 57/187 | 95% of Fable 5's smarts at 1/3.4 cost. |
+| Orchestrator (max-intel) | Claude Fable 5 | $10 / $50 | 60/187 | Premium opt-in. |
+| Workers (paid) | DeepSeek V4 Pro | $0.435 / $0.87 | 44/187 | Coding-optimized. |
+| Workers (free) | DeepSeek V4 Flash | $0.09 / $0.18 | — | Good enough for free builds. |
 
-**Why Kimi K3 as default orchestrator:** 57/187 on the intelligence index vs Fable 5's 60/187 — 95% of the smarts at 1/3.4 the cost. Fable 5 is the premium opt-in for users who want max planning quality.
+Note: there are $0.00–$0.02/M models (Devstral 2, Gemma 3n E4B) but they rank far below coding quality — not usable as the conversation face. V4 Flash is the floor that still codes.
 
-### 2.2 Two Conversation Modes
+### 2.2 Two conversation modes
+- **Cheap mode (default, all tiers):** V4 Flash converses; orchestrator wakes only on builds. Bad calls caught at plan time.
+- **Guided mode (opt-in, paid):** orchestrator validates mid-conversation ("senior engineer glances over"). Adds ~$1.60/session. This is a **paid upsell**, not a default.
 
-**Cheap mode (default, all tiers).** V4 Flash converses. Orchestrator wakes ONLY on build tasks. No mid-conversation validation. Bad architectural calls are caught at plan time when the orchestrator reads the full conversation before splitting.
+### 2.3 The build loop
+Plan (Kimi K3) → scope files per feature → spawn local sandbox → worker (jcode fork, headless) edits → in-sandbox quality gate (lint/typecheck/tests) → orchestrator judges → on logic failure, write OKF doc + re-spin fresh sandbox with lesson (max 3, then escalate) → merge sandbox stitches → orchestrator final review → resume chat. Concurrency user-configured; kill-on-done; temp files deleted except needed output.
 
-**Guided mode (opt-in, paid tiers).** Orchestrator validates decisions as you talk — the "senior engineer glances over" pattern. Smarter, but adds ~$1.60/session in orchestrator listening cost. User toggles it on when the task matters.
+### 2.4 OKF memory
+Orchestrator writes canonical OKF docs (success AND failure). Workers read via cognee two-step retrieval (embed task → query graph → open + judge relevant docs). Retry pre-loads the lesson. This attacks the field's #1 cost driver (re-attempts — the OmO creator's $24K burn).
 
-**Why two modes:** this solves the "cheap model cements bad ideas" problem without forcing the expensive model into every chat turn. Most conversations don't need a senior engineer — they need a fast colleague. The expensive model is the planner, not the talker.
+### 2.5 Engine: jcode fork (swarm removed)
+Rust, MIT. Remove `jcode-swarm-core`, keep agent runtime. **Why jcode over OpenCode:** 13.4× less RAM/session (27.8 MB vs 371.5 MB), 74× faster startup (14 ms vs 1,036 ms) — critical because the MAO spawns 5+ instances per build. OpenCode would OOM a laptop.
 
-### 2.3 The Build Loop
+### 2.6 Sandbox (security hard-requirement)
+Friend's local system (~ping deploy, not Docker). **Must be a microVM, not a container.** Containers are not a security boundary (8 escape CVEs in 18 months; Claude Code disables its own sandbox). Untrusted mini-model shell commands need Firecracker/Cloud Hypervisor/libkrun isolation (e.g. microsandbox, ~125 ms boot). Open: interface, output extraction, real concurrency cap, failure signaling, and container-vs-microVM. **Build against a mock interface first** so Layer 1 isn't blocked.
 
-1. You describe the task. V4 Flash converses, scopes it.
-2. Real work appears → orchestrator (Kimi K3) wakes, reads conversation, plans the feature split.
-3. For each feature: orchestrator scopes the exact files the worker needs (no full-repo duplication), spawns a local sandbox, assigns V4 Pro.
-4. Worker (running jcode fork, headless) does the edit. Quality gate (lint + typecheck + tests) runs in-sandbox BEFORE the orchestrator judges — syntax failures are fixed in-place, not retried.
-5. Orchestrator judges success. On logic failure (wrong approach, not syntax): writes an OKF doc, re-spins a FRESH sandbox with the lesson pre-loaded (max 3 re-spins, then escalates to human or re-plans).
-6. Final merge sandbox stitches outputs. Orchestrator does last review.
-7. Conversation resumes on V4 Flash.
-
-Concurrency is user-configured (no auto-decision). Each sandbox gets only the files it needs. Kill-on-done; all temp files deleted except the needed output.
-
-### 2.4 OKF Memory (the learning layer)
-
-- **OKF writes = orchestrator.** Canonical truth, written on success AND failure. What worked, what definitively didn't.
-- **OKF reads = workers (two-step retrieval).** Worker embeds its task, queries cognee graph → gets candidate OKF docs → OPENS the relevant ones and judges if they apply. cognee is the index; OKF markdown is the source; the worker is the relevance judge.
-- On retry, the failed attempt's OKF doc is pre-loaded so the worker doesn't repeat the mistake.
-
-This attacks the field's #1 cost problem (the OmO creator spent $24K on tokens mostly on re-attempts) by making each failure a reusable lesson.
-
-### 2.5 The Engine: jcode fork (swarm stripped)
-
-jcode (Rust, MIT, 8.7K stars) is the agent runtime inside each sandbox. We fork it and remove `jcode-swarm-core` (its built-in multi-agent feature) — our orchestrator replaces it. We keep: file edits, shell, git, provider routing, memory, TUI.
-
-**Why jcode over OpenCode (hard numbers):**
-- RAM: 27.8 MB/session vs OpenCode's 371.5 MB (**13.4× less**). At 10 sessions: 117 MB vs 3.2 GB (**27.7× less**). Our MAO spawns 5+ instances per task — OpenCode would OOM a laptop.
-- Startup: 14 ms to first frame vs 1,036 ms (**74× faster**). Matches the "ping" sandbox-spawn claim.
-- Built-in semantic vector memory graph (passive + active) — adapts to emit OKF docs.
-- Self-dev mode (edit own source, rebuild, reload) — fast fork iteration.
-
-### 2.6 The Sandbox (security-critical)
-
-Your friend's local sandbox system (claims ~ping deploy, not Docker). **Hard requirement: it must be a microVM, not a container.** Research (htdocs.dev 2026): containers are not a security boundary — 8 container-escape CVEs in 18 months, and Claude Code was shown to disable its own sandbox when it blocked task completion. Untrusted mini-models running shell commands need microVM isolation (Firecracker / Cloud Hypervisor / libkrun, e.g. microsandbox — open source, ~125ms boot, hardware-enforced).
-
-Open questions for your friend: interface (REST/CLI/SDK), input contract (files vs mount), output extraction path, real concurrency cap, failure-mode signaling, and crucially — container or microVM.
-
-**De-risking move:** build the orchestrator against a MOCK sandbox interface we define now, so Layer 1 is not blocked on his answers. Swap in his real system when confirmed.
-
-### 2.7 Two Surfaces, One Engine
-
-Same three-panel layout (files · chat · orchestration) rendered two ways:
-- **Terminal TUI** — monospace, box chars, runs `devagent-mao` in any terminal
-- **Desktop app** — same layout, CSS + buttons, runs as a window (Electron/Tauri)
-
-Identical functionality, one codebase, one orchestrator backend. No feature divergence.
+### 2.7 Two surfaces, one engine
+Same three-panel layout (files · chat · orchestration) rendered as terminal TUI and desktop app. Identical functionality, one codebase.
 
 ---
 
-## 3. BUSINESS ARCHITECTURE
+## 3. BUSINESS ARCHITECTURE (restructured to balance)
 
-### 3.1 Pricing (credit-capped, no overage)
+### 3.1 Pricing (credit-capped; free tier is BYOK)
 
-| Tier | Price | API credit | Orchestrator | Workers | Ad split | Conversation |
-|------|-------|-----------|--------------|---------|----------|--------------|
-| Free | $0 | $10 V4 Flash | V4 Flash | V4 Flash | none | cheap mode |
-| Starter | $5/mo | $5 | Kimi K3 | V4 Flash | 15% | cheap + guided toggle |
-| Pro | $20/mo | $20 | Kimi K3 | V4 Pro | 30% | cheap + guided toggle |
-| Max | $50/mo | $50 | Fable 5 opt-in | V4 Pro | 50% | cheap + guided toggle |
+| Tier | Price | API credit | Orchestrator | Workers | Conversation | Notes |
+|------|-------|-----------|--------------|---------|--------------|-------|
+| **Free** | $0 | **BYOK** (bring your own V4 Flash key) | V4 Flash | V4 Flash | cheap mode | Cost to us ≈ $0 |
+| **Starter** | $5/mo | $5 + $10 V4 Flash welcome credit | Kimi K3 | V4 Flash | cheap + guided toggle | welcome credit = ad-viewing price |
+| **Pro** | $20/mo | $20 | Kimi K3 | V4 Pro | cheap + guided toggle | ~14 builds |
+| **Max** | $50/mo | $50 | Fable 5 opt-in | V4 Pro | cheap + guided toggle | ~36 builds |
 
-**Credit-capped:** max loss per user = subscription price. Exhausted → auto-downgrade to V4 Flash. No surprise bills.
+**The structural fix:** free tier does NOT get a free $10 credit. Free = BYOK (user brings their own V4 Flash key, our cost $0). The $10 welcome credit is a **paid-tier perk** you get for watching ads. This removes the -$8,000/mo free bleed entirely.
 
-**Key fix (your question):** the free tier DOES use the MAO, but with **V4 Flash as the orchestrator too** — not Kimi K3. A cheap model plans (5K tokens × $0.28/M ≈ $0.0014/build), keeping our free-tier cost at ~$10.04/user/month (the $10 credit we front + pennies of planning). Paid tiers upgrade the orchestrator to Kimi K3/Fable 5. Free users get the full MAO architecture (parallel workers, OKF) planned by a budget model.
+**Credit-capped:** max loss per user = subscription price. Exhausted → throttle to V4 Flash. No surprise bills.
 
-### 3.2 The Ad Model (legal path, not AdSense)
+### 3.2 Sponsorships (secondary, not primary)
 
-**Hard constraint:** AdSense and Carbon Ads are banned in desktop apps (AdSense policy: ads "may not be integrated into a software application of any kind"). Mobile AdMob doesn't apply to Electron desktop.
+- **Legal path:** Playwire (desktop-app-supported) → Google Ad Manager → direct sponsor deals → affiliate links. AdSense/Carbon are banned in desktop apps.
+- **The ad slot:** real HTML banner during AI thinking, labeled "Sponsored," anti-fraud rate-limited.
+- **The trade:** paid tiers get the $10 V4 Flash welcome credit for leaving ads ON. Opting out removes it.
+- **NO ad-revenue split.** The earlier 15/30/50% split was unfundable (payout $1,605 vs ad rev $270). Cut it. Instead: **ads subsidize the welcome credit**, and at scale ads are a bonus margin line, not a user payout.
 
-**The legal network: Playwire.** It explicitly supports desktop-app advertising (dedicated desktop SDK, serves display/video/native). Fallback chain: Playwire → Google Ad Manager (confirmed legal for desktop) → direct sponsor deals → affiliate links.
+### 3.3 Revenue share — REMOVED, and why
+Paying users a % of ad revenue only works when ad revenue > payout. At any realistic CPM for unproven inventory, it isn't. So: no split. The "earn from ads" pitch becomes "watch ads, get $10 of free V4 Flash credit" — a rebate, funded by us, capped, and honest.
 
-**The ad slot:** during AI thinking time, a real HTML sponsor banner renders in the response area. Real ad, labeled "Sponsored" (FTC), anti-fraud (max N ads/hour, triggers only on active request + heartbeat).
+### 3.4 Balanced unit economics (1,000 users, honest assumptions)
 
-**The trade:** every paid tier gets Free's $10 V4 Flash credit **unless** they opt out of ads. Opting out removes the free credit. Ads on by default; the free credit is the price of ad-viewing.
+Assumptions, all labeled:
+- 700 free BYOK (cost ~$0), 0 free-credit users (credit moved to paid perk)
+- 150 Starter, 100 Pro, 50 Max (30% paid conversion — optimistic; industry freemium is 2-5%, so this assumes strong product pull)
+- CPM $8 (dev audience, mid estimate; range $2-15)
+- 30% desktop adoption, 15 ad impressions/day/user
 
-### 3.3 Revenue Share & Legal
+**Revenue:**
+- Subscriptions: (150×$5) + (100×$20) + (50×$50) = $750 + $2,000 + $2,500 = **$5,250**
+- Ads: 1,000 users × 30% × 15/day × 30 days ÷ 1000 × $8 = **$1,080**
+- Total revenue: **$6,330**
 
-- **Ad split by tier** (15/30/50%) — but at modeled CPM ($2), no user ever reaches $600/yr. So earnings stay as account credit (no 1099, no cash payout). The $600 threshold is theoretical; realistically it's a subscription rebate, not income.
-- **BYOK:** users bringing keys need TWO — orchestrator key + worker key (or one aggregator like OpenRouter). Hosted plans need none.
-- **Disclosure:** all sponsored content labeled. Privacy policy + ToS required. GDPR consent for EU.
+**Costs:**
+- Starter API: 150 × $5 = $750
+- Pro API: 100 × $20 = $2,000
+- Max API: 50 × $50 = $2,500
+- Welcome credits (300 paid users × $10 V4 Flash, but it's pass-through credit): 300 × $10 = $3,000 — *but* this is credit we front that users spend on V4 Flash; at $0.09/$0.18 it's ~30M tokens, realistically only ~40% burns = **$1,200**
+- Infrastructure (server, auth, ad serving): **$100**
+- Total costs: **$6,150**
 
-### 3.4 Unit Economics (1,000 users, $2 CPM, 30% desktop, benchmark-validated costs)
+**Net: +$180/month at 1,000 users.** Barely break-even, and only because free tier is BYOK (cost $0) and paid conversion is a healthy 30%.
 
-| Tier | Users | Sub $ | Our API cost | Ad rev | Split | Net |
-|------|-------|-------|-------------|--------|-------|-----|
-| Free | 800 | $0 | -$8,032 ($10.04×800) | +$360 | $0 | -$7,672 |
-| Starter | 100 | $500 | -$500 | +$360 | -$54 | +$306 |
-| Pro | 70 | $1,400 | -$546 | +$378 | -$113 | +$1,119 |
-| Max | 30 | $1,500 | -$234 | +$162 | -$81 | +$1,347 |
+**At $2 CPM:** ads drop to $270, net = **-$630/month.** Slightly underwater.
+**At $15 CPM:** ads = $2,025, net = **+$1,125/month.** Comfortable.
 
-**Critical correction:** free users cost us $10.04 each (not the $0.13 earlier). 800 free users = **-$7,672/month**. The paid tiers (+$2,772) don't cover it. The free tier is a loss leader, NOT a profit center.
+### 3.5 The three levers that make it profitable
+1. **CPM.** At $8 we break even; at $15 we're profitable. Developer audiences can command this — but only after the inventory proves itself. Year 1, assume $2-4.
+2. **BYOK free tier.** Non-negotiable. If free users cost us $10 each, the business dies. BYOK = $0 cost = the free tier is a pure funnel.
+3. **Paid conversion.** 30% is what the model needs. Industry freemium is 2-5%. The gap is closed by the MAO's genuine cost advantage (94% cheaper coding is a real reason to pay) and by the welcome-credit nudge. But this is the riskiest assumption.
 
-**What closes the gap:**
-1. **Ads must cover free-tier cost.** 800 free users × $10.04 = $8,032/mo. To break even on free tier alone, ads need $8,032/mo = 4M impressions/mo at $2 CPM = 800 users × 167 impressions/day each. Free users at 25 req/day × 1 ad/req = 25 ads/day = ~$1.50/mo/user. **Not enough.** Free tier is a net cost.
-2. **Free tier exists to convert.** It's a demo. The business runs on Starter/Pro/Max. Free cost ($7,672) is customer-acquisition spend. If 5% of free converts to paid, CAC is ~$19/converting user — acceptable if LTV > $19 (a $5 Starter user paying 12 months = $60 LTV). Tight but workable.
-3. **BYOK free tier.** If free users bring their own keys, our cost drops to ~$0 (they pay their own tokens). The $10 credit is optional. This makes free tier nearly free for us.
+**Honest verdict:** at 1,000 users this is a break-even-to-slightly-positive business IF free is BYOK and CPM is decent. Real profit needs 5,000+ users (where subscriptions scale) or a $15 CPM. This is a 12-18 month volume game, not a launch-month money printer.
 
-**Honest verdict:** the business does NOT break even at 1,000 users on subscriptions + $2 CPM ads alone. It needs either (a) higher CPM ($5-15 dev audience), (b) BYOK free tier to cut the $8K bleed, or (c) 5,000+ users where paid conversion scales. This is a volume game, and the free tier must be mostly BYOK to not sink us.
-
-### 3.5 Zero-Funding Build Sequence
-
-1. **Phase 1 ($0):** Fork jcode, add sponsor banner to desktop shell, BYOK only. Ship free on GitHub. No backend, no API keys to manage.
-2. **Phase 2 (ad revenue funds infra):** Playwire live → first sponsor deal → $15 Command Code Provider + $30/mo server.
-3. **Phase 3:** Free tier goes live (BYOK + optional $10 credit), cheap mode only.
-4. **Phase 4:** Stripe subscriptions, credit system, guided mode, ad splits.
+### 3.6 Zero-funding build sequence
+1. **Phase 1 ($0):** jcode fork + sponsor banner in desktop shell, BYOK only. Ship free on GitHub. No backend.
+2. **Phase 2 (ad revenue funds infra):** Playwire live → first sponsor deal → $30/mo server + BYOK free tier.
+3. **Phase 3:** Stripe subscriptions + credit system + cheap mode.
+4. **Phase 4:** Guided mode, welcome credit, team plans, Fable 5 opt-in.
 
 ---
 
-## 4. THE RELATIONSHIP (technical decision → business outcome)
+## 4. RELATIONSHIP (technical decision → business outcome)
 
 | Technical decision | Business consequence |
 |--------------------|---------------------|
-| **V4 Flash = conversation face** | Conversation costs pennies → free tier viable, casual chat doesn't drain credits |
-| **Kimi K3 = orchestrator** | 3.4× cheaper than Fable 5 → our per-build cost is $0.82 not $2.62 → $100 lasts 72 tasks not 23 |
-| **V4 Flash orchestrator on FREE tier** | Free-tier cost drops from $30.50 to $10.04/user → the loss-leader doesn't sink us |
-| **Workers = V4 Pro (paid) / V4 Flash (free)** | Paid users get better code, free users get enough → clear tier differentiation |
-| **Credit-capped subscriptions** | Max loss per user = sub price → no overage risk, no surprise bills, predictable unit economics |
-| **OKF save-states** | Fewer re-attempts → lower worker token cost → attacks the #1 cost driver in the field ($24K OmO burn) |
-| **Quality gate in-sandbox** | Syntax fixed before orchestrator judgment → fewer expensive orchestrator reviews → cheaper builds |
-| **jcode over OpenCode (13× less RAM)** | 5+ parallel sandboxes don't OOM → concurrency feature works → "parallel build" is a selling point |
-| **MicroVM sandbox (not container)** | Untrusted mini-model shell commands are safe → we can run BYOK arbitrary code → liability + trust |
-| **Playwire not AdSense** | Legal ad serving in desktop app → the ad-revenue model is actually possible |
-| **Ad opt-out loses free credit** | Ads are the price of free credit → ad inventory is guaranteed on paid tiers → CPM revenue is stable |
-| **Two surfaces, one engine** | Desktop app (ads work) + terminal (lean) → wider reach, same codebase, no double build |
-| **Two conversation modes** | Cheap default keeps cost low → guided mode is a paid upsell → free tier is lean, paid is smart |
-| **BYOK option** | Power users pay their own tokens → our cost on those users → ~$0 → free tier nearly free |
-| **Mock-sandbox-first build** | Layer 1 not blocked on friend's answers → we ship without waiting → zero-funding launch is possible |
+| V4 Flash conversation face | Chat costs pennies → free tier viable, casual use doesn't drain credits |
+| Kimi K3 orchestrator ($3/$15 not $10/$50) | Per-build $0.82 not $2.62 → $100 lasts 72 builds → thin margin per build survives |
+| V4 Flash orchestrator on FREE tier | Free cost ~$0.14/build → but we removed free credit anyway, so free = BYOK = $0 cost |
+| V4 Pro paid workers | 44/187 intelligence, coding-optimized → paid users get real quality, clear tier gap |
+| Credit-capped subscriptions | Max loss = sub price → predictable unit economics, no overage |
+| OKF save-states | Fewer re-attempts → lower worker tokens → attacks the field's #1 cost driver |
+| Quality gate in-sandbox | Syntax fixed before orchestrator review → fewer expensive orchestrator calls |
+| jcode (13× less RAM) | 5+ parallel sandboxes don't OOM → "parallel build" feature works → a real selling point |
+| MicroVM sandbox | Untrusted BYOK code runs safely → enables the BYOK free tier that makes the model balance |
+| Playwire (not AdSense) | Legal desktop ads → the welcome-credit subsidy is fundable |
+| No ad-revenue split | Removes the $1,605-vs-$270 payout death spiral → subscriptions fund perks, ads are bonus |
+| BYOK free tier | Free users cost $0 → the -$8,000/mo bleed disappears → break-even becomes possible |
+| Two conversation modes | Cheap default keeps cost low → guided mode is a paid upsell → free is lean, paid is smart |
+| Mock-sandbox-first build | Layer 1 not blocked → zero-funding launch possible |
 
 ---
 
-## 5. THE RISKS (where it breaks)
+## 5. RISKS (where it breaks)
 
 | Severity | Risk | Mitigation |
 |----------|------|-----------|
-| 🔴 | Sandbox is a container (not microVM) → host compromise | Verify with friend; wrap in microsandbox if needed |
-| 🔴 | Playwire rejects the app / low CPM | Direct sponsor deals + affiliates as floor |
-| 🔴 | Free-tier bleed ($8K/mo at 800 users) | Make free tier BYOK-primary; $10 credit optional |
+| 🔴 | CPM is $2-4 not $8-15 (unproven inventory) | Sponsorships are supplementary; subscriptions carry the business |
+| 🔴 | Free users won't BYOK (friction) | $10 welcome credit as the hook; but then cap it hard (V4 Flash only, low build count) |
+| 🔴 | Paid conversion is 2-5% not 30% | The 94% cost advantage + welcome credit must pull harder; if not, the model needs enterprise/team plans |
+| 🔴 | Sandbox is a container not a microVM | Verify with friend; wrap in microsandbox if needed |
 | 🟠 | Kimi K3 / V4 Pro price increases | Model-agnostic router → auto-switch to cheapest equivalent |
-| 🟠 | Command Code Provider terms change | OpenRouter fallback (same V4 Pro/Flash rates) |
-| 🟠 | OKF lessons are low-quality early on | Quality gate + 3-strike escalation to human |
-| 🟡 | Ad fraud (app left open) | Session rate limiting + heartbeat |
+| 🟠 | Command Code Provider terms change | OpenRouter fallback (same V4 rates) |
+| 🟠 | OKF lessons low-quality early | Quality gate + 3-strike escalation to human |
+| 🟡 | Ad fraud | Session rate limiting + heartbeat |
 | 🟡 | Account sharing | 2 concurrent sessions max |
-| 🟡 | 1099 threshold | Account credit below $600 (never reached at modeled CPM) |
 
 ---
 
-## 6. THE ONE-PARAGRAPH ANSWER
+## 6. THE HONEST ONE-PARAGRAPH ANSWER
 
-DevAgent MAO is a conversational coding agent whose engine separates *thinking* from *writing*: a cheap model talks to you, an expensive model plans only when real work appears, and cheap models build in parallel sandboxes that learn from every run. Technically it's a jcode fork with a custom orchestrator + OKF memory + microVM sandboxes. Commercially it's credit-capped subscriptions plus legal desktop sponsorships (Playwire), with a BYOK-first free tier that demos the MAO without bleeding us dry. The relationship: every technical choice (cheap conversation face, cheap free-tier orchestrator, credit caps, OKF lessons, microVM isolation) exists to make the expensive part of coding cheap — so we can sell "the same AI coding you know, at 6% of the cost" and survive the free tier that gets people in the door.
+DevAgent MAO is a conversational coding agent whose engine separates thinking from writing so coding costs 6% of a frontier model. Technically it's a jcode fork + custom orchestrator + OKF memory + microVM sandboxes. Commercially it's credit-capped subscriptions with sponsorships as a secondary stream — NOT an ad-revenue-share product, because the math doesn't support paying users out of ad revenue at realistic CPMs. The single decision that makes the balance sheet work is **BYOK free tier**: free users bring their own keys (cost $0), so the free tier is a pure funnel instead of an $8,000/month bleed. At 1,000 users with 30% paid conversion and $8 CPM, it breaks even. Real profit needs 5,000+ users or proven $15 CPM. Every technical choice — cheap conversation face, cheap free-tier orchestrator, credit caps, OKF lessons, microVM isolation — exists to make the expensive part of coding cheap, so we can sell "frontier-quality coding at 6% of the cost" and survive the free tier that gets people in the door.
