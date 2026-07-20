@@ -105,6 +105,27 @@ Mini-model failures are predominantly LOGIC (wrong approach, misunderstood requi
 - After 3 strikes → escalate to the LARGE model, which either re-plans the feature smaller or flags it for human review
 - Syntax failures are NOT retries — the quality gate forces in-sandbox fix before orchestrator judgment
 
+## 3d. Conversation Model & Two Modes
+
+The orchestrator is NOT the conversational partner. A cheaper model (V4 Flash) is the face. Two modes control how much the expensive orchestrator participates:
+
+**Cheap mode (default, all tiers):**
+- Tiny model (V4 Flash) handles ALL conversation — chat, explain, brainstorm, answer
+- Orchestrator (Kimi K3) wakes ONLY on build tasks: plans, spawns workers, merges
+- No mid-conversation validation. Bad architectural calls are caught at plan time when the orchestrator reads the full conversation before splitting work
+- Lowest cost: conversation is pennies; orchestrator cost (~$0.82/task) applies only when building
+
+**Guided mode (opt-in, paid tiers):**
+- Orchestrator validates decisions mid-conversation (the "senior engineer glances over" pattern)
+- Smartest path, but adds ~$1.60/session in orchestrator listening/validation cost
+- User explicitly toggles it on
+
+**Tier mapping:**
+- Free: cheap mode only
+- Starter/Pro/Max: cheap mode default, guided mode toggle available
+
+**BYOK implication:** users bringing their own keys provide (1) an orchestrator key and (2) a worker/conversation key. One aggregator key (OpenRouter) can cover both. Guided mode simply uses the orchestrator key more. Hosted plans need no keys — pay and pick tier.
+
 ## 4. Sandbox Lifecycle
 
 1. Orchestrator scopes files for feature F.
