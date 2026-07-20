@@ -159,3 +159,36 @@ cognee indexes frontmatter + body for similarity recall.
 - [ ] OKF store location (local dir path, git-backed?)
 - [ ] cognee deployment mode (local Postgres? embedded SQLite/LanceDB?)
 - [ ] jcode fork: which crates to keep, what to strip beyond swarm
+
+## 9. Conversation Model: Two-Layer, Validation-First
+
+The MAO is NOT build-only. Most sessions are conversation (brainstorm, debug talk, explain, "what do you think"). The architecture must support both without breaking the cost thesis.
+
+### The problem with "orchestrator as conversational agent"
+If the expensive model (Kimi K3 / Fable 5) is the always-on chat partner, EVERY message hits it at $15-50/M output. Cost saving vanishes. The MAO only saves money if the expensive model touches minimal tokens.
+
+### The problem with "cheap model as conversation, orchestrator hidden"
+If V4 Flash handles all chat and only escalates on build, the orchestrator inherits a LOW-QUALITY conversation — the cheap model cemented shallow decisions. Knowledge gap: the planner plans from garbage.
+
+### Solution: cheap model = fast talker, expensive model = senior engineer (validator + planner)
+- **Cheap model (V4 Flash, $0.14/$0.28)** is the visible conversational partner. Handles chat, explain, brainstorm.
+- **Expensive model (Kimi K3 / Fable 5)** has TWO jobs, both visible from turn one:
+  1. **Validate decisions in real-time** — when the cheap model hits a real choice ("Redis or Postgres?", "is this architecture sound?"), it defers: "let me check with the planner." Expensive model validates (~200 out tokens = **$0.003/call**). User knows the senior engineer is in the room.
+  2. **Plan + orchestrate builds** — when real work appears, plans, spawns workers, reviews, merges.
+- **No betrayal, no knowledge gap:** the expensive model isn't a hidden observer or a surprise boss. It's the validator present from the start. Decisions get signed off before they're cemented. The cheap model NEVER cements decisions — it defers on anything that matters.
+
+### Cost of the conversation layer (200K-token session, ~20 decision validations)
+- 20 validations × ~200 out tokens = 4K out × $15/M = **$0.06**
+- Orchestrator reading conversation for context: ~500K in × $3/M = **$1.50** (cached reads ~$0.03 each after first)
+- Total conversation-layer cost: **~$1.60/session** — trivial vs a single Fable 5 output turn ($0.10-0.15)
+
+### 300M-token-context session cost (DeepSeek V4 Pro workers, Kimi K3 orchestrator)
+Rates: Kimi K3 $3/$15, V4 Pro $0.435/$0.87.
+- Orchestrator (validation + planning + review): ~1M tokens total = **~$2**
+- Workers (V4 Pro) carry the 300M: ~200M in × $0.435 = **$87**, ~100M out × $0.87 = **$87** → **~$174**
+- **MAO total: ~$176** for a 300M-context session
+- Contrast: Fable 5 does everything = 200M in × $10 + 100M out × $50 = **$2,100**
+- **MAO is 92% cheaper.** The 300M context cost lives with the WORKERS (cheap), not the orchestrator. Expensive model stays ~$2 regardless of session size.
+
+### Key rule
+Context is cheap when it's on cheap models. The expensive model stays tiny regardless of session size. The MAO thesis holds at any context scale.
