@@ -32,7 +32,8 @@ Reference: microVM ecosystem (rust-vmm, Firecracker) is the 2026 standard for AI
 
 | Model | Role | Input (cache miss) | Output |
 |-------|------|-------------------|--------|
-| Kimi K3 | Orchestrator | ~$3/M | ~$9/M |
+| Kimi K3 | Orchestrator | $3.00/M | $15.00/M | Intelligence 57/187 |
+| Claude Fable 5 | Orchestrator | $10.00/M | $50.00/M | Intelligence 60/187 (#1) |
 | DeepSeek V4 Flash | Worker | $0.14/M | $0.28/M |
 | DeepSeek V4 Pro | Worker | $0.435/M | $0.87/M |
 
@@ -41,6 +42,24 @@ Example: task needing ~200K output tokens.
 - Split (orchestrator ~10K out + 50K in = $0.24, workers ~190K out at V4 Flash = $0.053): **~$0.29** — 27% cheaper. Gap widens on larger tasks because orchestrator input stays flat (one plan) while workers do token-heavy generation at 3-6x lower rates.
 
 Benchmark validation (htdocs.dev, Apr 2026): multi-agent orchestration with frontier orchestrator + cheap workers is the dominant 2026 pattern (OmO/Sisyphus runs Kimi K2.5 orchestrator + cheaper workers in production). OKF save-states attack the field's #1 cost warning (OmO creator spent $24K on tokens) by reducing re-attempts.
+
+### Cost Calculator: $100 of orchestrator credit in our MAO
+
+In our architecture the orchestrator (Fable 5 / Kimi K3) ONLY plans + reviews. Workers (V4 Flash) do generation. So $100 of orchestrator credit is spent almost entirely on orchestrator tokens, not generation.
+
+Per-task orchestrator cost (plan: ~5K in + ~8K out; review: ~3K in + ~2K out):
+- **Kimi K3:** (5K×$3 + 8K×$15 + 3K×$3 + 2K×$15)/1M = **~$0.17/task**
+- **Fable 5:** (5K×$10 + 8K×$50 + 3K×$10 + 2K×$50)/1M = **~$0.58/task**
+
+$100 buys:
+| Orchestrator | Tasks per $100 | At 10 tasks/day | At 20 tasks/day |
+|--------------|---------------|-----------------|-----------------|
+| Kimi K3 | ~580 | ~58 days | ~29 days |
+| Fable 5 | ~172 | ~17 days | ~8.5 days |
+
+For contrast, a normal agent where Fable 5 does EVERYTHING (~200K output/task at $50/M = $10/task): $100 lasts **~10 tasks**. Our MAO makes the same $100 last **~17× longer** because the expensive model only thinks.
+
+Kimi K3 is the recommended default orchestrator: 3.4× cheaper than Fable 5 at 95% of its intelligence (57 vs 60). Fable 5 is the max-intelligence option for users who want the best planning and can pay for it. Both validated via Artificial Analysis (July 2026).
 
 ## 2. Core Principle: Cost Concentration
 
