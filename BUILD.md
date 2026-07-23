@@ -208,7 +208,7 @@ devagent-mao/
 
 | Component | Status |
 |-----------|--------|
-| Shiro codebase (Express, React, Prisma, Socket.IO, xterm.js) | exists (friend's repo) — MIT/licensing TBD |
+| Shiro source (`Joshua07q/shiro-cloud-workstation`, MIT, Rust) | exists — file-sync system, to be restructured per [SHIRO-RESTRUCTURE.md](SHIRO-RESTRUCTURE.md) |
 | jcode (Rust agent) | exists externally — fork not started |
 | Architecture decisions | done, locked |
 | Sandbox engine (4 engines) | designed, not built |

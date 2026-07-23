@@ -44,6 +44,7 @@ Validated externally (iternal.ai 2026): hierarchical orchestration = **97.7% of 
 | [BUILD.md](BUILD.md) | The full architecture: components, build flow, repo layout, build order |
 | [VALIDATION.md](VALIDATION.md) | The experiment we run BEFORE writing the orchestrator. Kill criteria included |
 | [SANDBOX-INTERFACE.md](SANDBOX-INTERFACE.md) | The formal Shiro API contract (spawn, mount, extract, kill, failure codes) |
+| [SHIRO-RESTRUCTURE.md](SHIRO-RESTRUCTURE.md) | How we strip the file-sync repo into the sandbox engine |
 | [PROMPTS.md](PROMPTS.md) | The orchestrator prompt specs — the core IP |
 | [TESTING.md](TESTING.md) | Test strategy for a parallel multi-agent system |
 | [MOAT.md](MOAT.md) | Why this isn't just "route to cheap models" |

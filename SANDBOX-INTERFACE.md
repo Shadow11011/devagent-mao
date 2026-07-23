@@ -101,10 +101,5 @@ Implementations:
 2. `ShiroHttpAdapter` — the real one, hits the contract above.
 3. `MicrosandboxAdapter` — fallback if Shiro's isolation turns out to be containers (security hard-requirement).
 
-## Open questions for the Shiro owner
-1. Confirm REST (vs CLI/SDK) and the exact auth model.
-2. Confirm output extraction is git-diff-based.
-3. Real concurrency cap per machine.
-4. Crash signaling: does Shiro distinguish OOM/TIMEOUT/CRASH, or just "failed"?
-5. **Isolation model: bwrap/sandbox-exec/microVM, or containers?** (If containers, we wrap in microsandbox — containers aren't a security boundary for untrusted model shell commands.)
-6. MIT-compatible licensing for open-sourcing the integration.
+## Source & status
+The Shiro engine is a **restructure of `Joshua07q/shiro-cloud-workstation`** (MIT, Rust) — a file-sync system we strip and rebuild as the sandbox runtime. The transformation plan is in [SHIRO-RESTRUCTURE.md](SHIRO-RESTRUCTURE.md). Nothing below depends on the friend's roadmap; we own the fork. The mock adapter is built first regardless.
