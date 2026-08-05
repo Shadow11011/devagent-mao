@@ -25,19 +25,44 @@ export function parseTrailingJson(stdout) {
   // Fast path: stdout IS one (possibly pretty-printed) JSON document.
   const whole = text.trim();
   if (whole.startsWith('{')) { try { return JSON.parse(whole); } catch { /* fall through */ } }
-  // Noisy stdout: scan backward over every '{' start and every '}' end after it.
-  const opens = [], closes = [];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '{') opens.push(i);
-    else if (text[i] === '}') closes.push(i);
-  }
-  for (let oi = opens.length - 1; oi >= 0; oi--) {
-    for (let ci = closes.length - 1; ci >= 0 && closes[ci] > opens[oi]; ci--) {
-      const slice = text.slice(opens[oi], closes[ci] + 1);
-      try { return JSON.parse(slice); } catch { /* keep scanning */ }
+  // Noisy stdout: the report is the balanced JSON object ending at the end of output.
+  // (Nested objects deeper inside also balance-parse, so position is the disambiguator.)
+  const endPos = text.trimEnd().length;
+  let fallback = null;
+  for (const cand of balancedObjects(text)) {
+    if (cand.end === endPos || cand.end === endPos - 1) {
+      try { return JSON.parse(text.slice(cand.start, cand.end)); } catch { /* keep scanning */ }
+    } else if (fallback === null) {
+      try { fallback = JSON.parse(text.slice(cand.start, cand.end)); } catch { /* not json */ }
     }
   }
+  if (fallback !== null) return fallback;
   throw new Error('no JSON report found in worker stdout');
+}
+
+// Yields every balanced {...} span (string-aware), from LAST opening brace backward.
+function* balancedObjects(text) {
+  const opens = [];
+  for (let i = 0; i < text.length; i++) if (text[i] === '{') opens.push(i);
+  for (let oi = opens.length - 1; oi >= 0; oi--) {
+    const start = opens[oi];
+    let depth = 0, inStr = false, esc = false;
+    for (let j = start; j < text.length; j++) {
+      const c = text[j];
+      if (esc) { esc = false; continue; }
+      if (inStr) {
+        if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') { inStr = true; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) { yield { start, end: j + 1 }; break; }
+      }
+    }
+  }
 }
 
 export function extractSummary(text) {
