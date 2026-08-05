@@ -6,3 +6,5 @@ validation/results/
 validation/repos/
 validation/fixtures/
 node_modules/
+web/node_modules/
+web/app/dist/
