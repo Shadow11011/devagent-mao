@@ -147,7 +147,14 @@ async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir
     emit('worker-done', { feature: feature.id, attempt, new: diffInfo.newFiles.length, edited: diffInfo.editedFiles.length, tokens: w.usage });
     const j = await api.judgeFeature(cfg, { feature, diffInfo, gateLog: w.gateLog, summary: w.summary });
     totals.orchestrator.input += j.usage.prompt; totals.orchestrator.output += j.usage.completion;
-    rec.features[feature.id] = { attempts: attempt, verdicts: [...(rec.features[feature.id]?.verdicts ?? []), j.verdict], summary: w.summary, usage: w.usage, wave: waveIndex };
+    rec.features[feature.id] = {
+      attempts: attempt,
+      verdicts: [...(rec.features[feature.id]?.verdicts ?? []), j.verdict],
+      judgeReasons: [...(rec.features[feature.id]?.judgeReasons ?? []), { verdict: j.verdict, failureClass: j.failureClass ?? null, reason: j.reason ?? '', lesson: j.lesson ?? null, attempt }],
+      summary: w.summary,
+      usage: w.usage,
+      wave: waveIndex,
+    };
     if (j.verdict === 'pass') { emit('worker-judged', { feature: feature.id, attempt, verdict: 'pass' }); return collectOutputs(adapter, sid, diffInfo, feature); }
     lesson = j.lesson ?? j.reason;
     emit('worker-judged', { feature: feature.id, attempt, verdict: 'fail', class: j.failureClass });
