@@ -22,14 +22,20 @@ default_model = "moonshotai/Kimi-K3"
 
 export function parseTrailingJson(stdout) {
   const text = String(stdout ?? '');
-  let i = text.lastIndexOf('{"');
-  while (i >= 0) {
-    const cand = text.slice(i).trim();
-    const close = cand.lastIndexOf('}');
-    for (const t of (close > 0 ? [cand, cand.slice(0, close + 1)] : [cand])) {
-      try { return JSON.parse(t); } catch { /* keep scanning */ }
+  // Fast path: stdout IS one (possibly pretty-printed) JSON document.
+  const whole = text.trim();
+  if (whole.startsWith('{')) { try { return JSON.parse(whole); } catch { /* fall through */ } }
+  // Noisy stdout: scan backward over every '{' start and every '}' end after it.
+  const opens = [], closes = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') opens.push(i);
+    else if (text[i] === '}') closes.push(i);
+  }
+  for (let oi = opens.length - 1; oi >= 0; oi--) {
+    for (let ci = closes.length - 1; ci >= 0 && closes[ci] > opens[oi]; ci--) {
+      const slice = text.slice(opens[oi], closes[ci] + 1);
+      try { return JSON.parse(slice); } catch { /* keep scanning */ }
     }
-    i = i > 0 ? text.lastIndexOf('{"', i - 1) : -1;
   }
   throw new Error('no JSON report found in worker stdout');
 }

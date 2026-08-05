@@ -15,6 +15,14 @@ describe('parseTrailingJson', () => {
   it('throws (no infinite loop) on partial json at index 0', () => expect(() => parseTrailingJson('{"abc')).toThrow(/no JSON/i));
 });
 
+
+  it('parses pretty-printed multi-line report', () => {
+    const pretty = '{\n  \"session_id\": \"x\",\n  \"text\": \"SUMMARY: ok\",\n  \"usage\": {\n    \"input_tokens\": 13670,\n    \"cache_creation_input_tokens\": null\n  }\n}\n';
+    const r = parseTrailingJson(pretty);
+    expect(r.usage.input_tokens).toBe(13670);
+    expect(r.session_id).toBe('x');
+  });
+
 describe('extractSummary', () => {
   it('takes last SUMMARY line', () => {
     expect(extractSummary('blah\nSUMMARY: built util.js\n')).toBe('built util.js');
