@@ -29,7 +29,7 @@ export function parseTrailingJson(stdout) {
     for (const t of (close > 0 ? [cand, cand.slice(0, close + 1)] : [cand])) {
       try { return JSON.parse(t); } catch { /* keep scanning */ }
     }
-    i = text.lastIndexOf('{"', Math.max(0, i - 1));
+    i = i > 0 ? text.lastIndexOf('{"', i - 1) : -1;
   }
   throw new Error('no JSON report found in worker stdout');
 }
@@ -50,9 +50,10 @@ export async function runWorker(cfg, adapter, sandbox, {
   });
   await fsp.writeFile(path.join(sandbox.dir, 'MAOWORK.md'), taskMd);
   // MAOWORK.md is orchestrator scaffolding, not feature output: keep it out of the git diff.
-  await fsp.appendFile(path.join(sandbox.dir, '.git', 'info', 'exclude'), 'MAOWORK.md\n');
+  const excludePath = path.join(sandbox.dir, '.git', 'info', 'exclude');
+  const excludeBody = await fsp.readFile(excludePath, 'utf8').catch(() => '');
+  if (!excludeBody.split('\n').includes('MAOWORK.md')) await fsp.appendFile(excludePath, 'MAOWORK.md\n');
   const cmd = `"${cfg.workerBin}" -C . --provider-profile ${profile} -m "${endpoint.model}" run --json 'Read MAOWORK.md in the current directory and do exactly what it says.'`;
-  const started = Date.now();
   const r = await adapter.exec(sandbox.id, {
     cmd, timeoutMs,
     env: { MAO_HOME: sandbox.maoHome, MAO_RUN_MCP: '0', MODAL_PROXY_TOKEN: cfg.apiKey },
@@ -70,7 +71,7 @@ export async function runWorker(cfg, adapter, sandbox, {
     return { ok: false, failureCode: 'EXEC_FAIL', failureDetail: `exit=${r.exitCode}; stderr tail: ${stderrTail}`, summary: '', text: report.text ?? '', usage: normU(report.usage), durationMs: r.durationMs, gateLog: '' };
   }
   const gateLog = await qualityGate(adapter, sandbox.id);
-  return { ok: true, failureCode: null, failureDetail: '', summary: extractSummary(report.text), text: report.text ?? '', usage: normU(report.usage), durationMs: Date.now() - started, gateLog };
+  return { ok: true, failureCode: null, failureDetail: '', summary: extractSummary(report.text), text: report.text ?? '', usage: normU(report.usage), durationMs: r.durationMs, gateLog };
 }
 
 function normU(u = {}) { return { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0 }; }

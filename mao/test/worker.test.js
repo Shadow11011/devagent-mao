@@ -12,6 +12,7 @@ describe('parseTrailingJson', () => {
     expect(parseTrailingJson(out).usage.input_tokens).toBe(3);
   });
   it('throws when no json', () => expect(() => parseTrailingJson('nada')).toThrow(/no JSON/i));
+  it('throws (no infinite loop) on partial json at index 0', () => expect(() => parseTrailingJson('{"abc')).toThrow(/no JSON/i));
 });
 
 describe('extractSummary', () => {
