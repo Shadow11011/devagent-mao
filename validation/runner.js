@@ -54,7 +54,7 @@ async function runArm(cfg, task, arm) {
   if (arm === 'A') {
     const rec = await runPipeline(
       { cfg, store, adapter: new LocalAdapter(store.sandboxesPath(runId)), emit: (t, d) => console.log(`  [${t}]`, typeof d === 'object' ? JSON.stringify(d).slice(0, 160) : d) },
-      { task: task.prompt, sourceDir, runId, verify, orchestratorEffort: task.orchestratorEffort ?? null },
+      { task: task.prompt, sourceDir, runId, verify, orchestratorEffort: task.orchestratorEffort ?? null, preinstall: true },
     );
     return {
       taskId: task.id, arm, status: rec.status, verifyOk: rec.status === 'verified',
@@ -70,6 +70,13 @@ async function runArm(cfg, task, arm) {
   const adapter = new LocalAdapter(store.sandboxesPath(runId));
   const scan = scanProject(sourceDir);
   const sb = await adapter.spawn({ id: runId, sourceDir, files: scan.files.map((f) => f.path), homeConfig: workerHomeConfig() });
+  {
+    const fs = await import('node:fs');
+    if (fs.existsSync(`${sourceDir}/package.json`)) {
+      console.log('  [preinstall] npm install before Arm B worker');
+      await adapter.exec(runId, { cmd: 'npm install --no-audit --no-fund --loglevel=error', timeoutMs: 300_000 });
+    }
+  }
   const w = await runWorker(cfg, adapter, sb, {
     feature: { id: 'whole-task', description: task.prompt, files: [], newFiles: [], dependencies: [] },
     endpoint: cfg.models.orchestrator, profile: cfg.workerProfiles.orchestrator, timeoutMs: cfg.runTimeoutMs,

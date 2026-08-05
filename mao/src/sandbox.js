@@ -40,6 +40,8 @@ export class LocalAdapter {
       await fsp.copyFile(from, to);
     }
     await git(['init', '-q'], dir);
+    // Dependency trees are build environment, not feature output: never let them pollute diffs.
+    await fsp.appendFile(path.join(dir, '.git', 'info', 'exclude'), 'node_modules/\npackage-lock.json\n');
     await git(['add', '-A'], dir);
     await git(['commit', '-qm', 'baseline', '--allow-empty'], dir);
     if (homeConfig) await fsp.writeFile(path.join(maoHome, 'config.toml'), homeConfig);

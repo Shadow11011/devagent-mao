@@ -129,6 +129,11 @@ async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir
     const sid = `${opts.runId}-${feature.id}-a${attempt}`;
     emit('worker-start', { feature: feature.id, attempt });
     const sb = await adapter.spawn({ id: sid, sourceDir: baseDir, files: feature.files, homeConfig: api.workerHomeConfig() });
+    // Give workers a runnable env when asked (validation arms): the sandbox mounts files, not their deps.
+    if (opts.preinstall && hasPkg(baseDir)) {
+      const pre = await adapter.exec(sid, { cmd: 'npm install --no-audit --no-fund --loglevel=error', timeoutMs: 300_000 });
+      emit('preinstall', { feature: feature.id, attempt, exitCode: pre.exitCode });
+    }
     const w = await api.runWorker(cfg, adapter, sb, { feature, lesson, endpoint: workerEndpoint, profile: workerProfile });
     totals.workers.input += w.usage.input; totals.workers.output += w.usage.output;
     if (!w.ok) {
