@@ -32,7 +32,7 @@ export const TASKS = [
     id: 't1', title: 'Express auth module (JWT + bcrypt + middleware)', kind: 'fixture',
     fixture: { files: { 'package.json': pkgExpress, 'src/app.js': expressAppJs() } },
     prompt: `Add a complete auth module to this Express app: POST /auth/register {email,password} hashes with bcrypt and returns 201 {token}; POST /auth/login returns 200 {token} for valid credentials, 401 otherwise; JWT middleware protecting GET /profile returning 200 {email} with a valid Bearer token, 401 without. Keep module.exports = app and the require.main===module listen guard. Add required dependencies to package.json.`,
-    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'node --test hidden/'],
+    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/auth.test.js', content: hiddenServerTest({
       requires: '../src/app.js',
       cases: `test('register, login, protected profile', async () => {
@@ -56,7 +56,7 @@ export const TASKS = [
     id: 't2', title: 'REST CRUD API (3 resources, shared router)', kind: 'fixture',
     fixture: { files: { 'package.json': pkgExpress, 'src/app.js': expressAppJs() } },
     prompt: `Add CRUD for three resources — products, orders, customers — each with: GET /<res> (list), GET /<res>/:id, POST /<res> (create with id), DELETE /<res>/:id. In-memory storage is fine. Share a single router factory to avoid duplication. Keep module.exports = app and the require.main===module guard.`,
-    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'node --test hidden/'],
+    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/crud.test.js', content: hiddenServerTest({
       requires: '../src/app.js',
       cases: `test('crud on all three resources', async () => {
@@ -83,7 +83,7 @@ export const TASKS = [
       'src/state.ts': `export type Item = { id: string; label: string };\nexport class Store {\n  private items: Item[] = [];\n  add(label: string): Item { const it = { id: String(this.items.length + 1), label }; this.items.push(it); return it; }\n  all(): Item[] { return [...this.items]; }\n  find(id: string): Item | undefined { return this.items.find((i) => i.id === id); }\n}\n`,
     } },
     prompt: `Build a framework-free TypeScript component set: src/components/form.ts (a FormComponent class with render(): string producing an HTML form with a text input and submit, and onSubmit(handler: (label: string) => void)), src/components/list.ts (ListComponent rendering <ul> of store items), src/components/detail.ts (DetailComponent rendering one item's full view). All three share the Store from src/state.ts. npm run build must stay green under strict tsc.`,
-    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build', 'node --test hidden/'],
+    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build', 'node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/components.test.js', content: `const test = require('node:test');\nconst assert = require('node:assert/strict');\ntest('components exist and share store', async () => {\n  const { Store } = require('../dist/state.js');\n  const store = new Store();\n  store.add('alpha');\n  const { ListComponent } = require('../dist/components/list.js');\n  const html = new ListComponent(store).render();\n  assert.ok(html.includes('alpha'));\n  const { FormComponent } = require('../dist/components/form.js');\n  const form = new FormComponent();\n  let got = null;\n  form.onSubmit((label) => { got = label; });\n  assert.equal(typeof form.render(), 'string');\n  assert.ok(form.render().includes('<form'));\n  const { DetailComponent } = require('../dist/components/detail.js');\n  assert.ok(new DetailComponent(store).render('1').includes('alpha'));\n});\n` }],
   },
   {
@@ -95,7 +95,7 @@ export const TASKS = [
       'config.json': '{ "version": 1 }\n',
     } },
     prompt: `Implement three subcommands sharing src/main.js and reading config.json: "upper <text...>" prints args joined and uppercased; "reverse <text...>" prints reversed; "sum <numbers...>" prints their sum (error exit 2 on non-numeric). Keep bin.js unchanged.`,
-    verifyCommands: ['node --test hidden/'],
+    verifyCommands: ['node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/cli.test.js', content: `const test = require('node:test');\nconst assert = require('node:assert/strict');\nconst { execFileSync } = require('node:child_process');\nconst run = (args) => execFileSync('node', ['bin.js', ...args], { cwd: __dirname + '/..', encoding: 'utf8' }).trim();\ntest('subcommands', () => {\n  assert.equal(run(['upper', 'hello', 'world']), 'HELLO WORLD');\n  assert.equal(run(['reverse', 'abc']), 'cba');\n  assert.equal(run(['sum', '2', '3.5']), '5.5');\n  assert.throws(() => run(['sum', 'x']));\n});\n` }],
   },
   {
@@ -107,14 +107,14 @@ export const TASKS = [
       'data/input.csv': 'name,score\nada,9\ngrace,7\nlinus,8\n',
     } },
     prompt: `Implement the pipeline so running "node index.js" reads data/input.csv via src/fetch.js, transforms rows to [{name, tier}] where tier = score>=8 ? "high" : "mid" via src/transform.js, and writes data/out.json (pretty-printed array) via src/store.js. Stages must stay in their own modules; index.js only orchestrates. No network access; input is the local CSV.`,
-    verifyCommands: ['node --test hidden/'],
+    verifyCommands: ['node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/pipe.test.js', content: `const test = require('node:test');\nconst assert = require('node:assert/strict');\nconst { execFileSync } = require('node:child_process');\nconst fs = require('node:fs');\ntest('pipeline produces out.json with tiers', () => {\n  const cwd = __dirname + '/..';\n  fs.rmSync(cwd + '/data/out.json', { force: true });\n  execFileSync('node', ['index.js'], { cwd });\n  const out = JSON.parse(fs.readFileSync(cwd + '/data/out.json', 'utf8'));\n  assert.deepEqual(out, [{ name: 'ada', tier: 'high' }, { name: 'grace', tier: 'mid' }, { name: 'linus', tier: 'high' }]);\n});\n` }],
   },
   {
     id: 't6', title: 'Auth + dashboard + payments (canonical 3-feature build)', kind: 'fixture',
     fixture: { files: { 'package.json': pkgExpress, 'src/app.js': expressAppJs() } },
     prompt: `Add three features to this Express app. (1) auth: POST /auth/register {email,password} (bcrypt hash) → 201 {token}; POST /auth/login → 200 {token}; JWT middleware. (2) dashboard: GET /dashboard (auth-required) → 200 {email, widgets: ["stats","recent"]}; 401 without token. (3) payments: POST /payments/charge {amountCents} (auth-required) → 200 {status: "stub", amountCents}; 401 without token. Add deps to package.json. Keep module.exports = app and the require.main===module guard.`,
-    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'node --test hidden/'],
+    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/e2e.test.js', content: hiddenServerTest({
       requires: '../src/app.js',
       cases: `test('canonical build: auth, dashboard, payments', async () => {
@@ -137,7 +137,7 @@ export const TASKS = [
     id: 't7', title: 'Feature in existing real repo (express, 500+ files)', kind: 'clone',
     repoUrl: 'https://github.com/expressjs/express.git', ref: '4.21.2',
     prompt: `In this real Express repo: add a res.jsonApi(version, data) response helper in lib/response.js that sends {version, data} with application/json content-type, and add a unit test test/res.jsonApi.js in the repo's own test style (they use supertest + mocha; DO NOT run the full suite). Only touch lib/response.js and add the new test file.`,
-    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'node --test hidden/'],
+    verifyCommands: ['npm install --no-audit --no-fund --loglevel=error', 'node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/jsonapi.test.js', content: `const test = require('node:test');\nconst assert = require('node:assert/strict');\nconst express = require('express');\ntest('res.jsonApi helper exists and works', async () => {\n  const app = express();\n  app.get('/x', (req, res) => { assert.equal(typeof res.jsonApi, 'function'); res.jsonApi('1.0', { a: 1 }); });\n  const srv = app.listen(0);\n  await new Promise((r) => srv.once('listening', r));\n  const base = 'http://127.0.0.1:' + srv.address().port;\n  const r = await fetch(base + '/x');\n  const body = await r.json();\n  assert.deepEqual(body, { version: '1.0', data: { a: 1 } });\n  srv.close();\n});\n` }],
   },
   {
@@ -150,7 +150,7 @@ export const TASKS = [
       'test/canon.test.js': `const test = require('node:test');\nconst assert = require('node:assert/strict');\nconst { canon } = require('../src/canon');\nconst { getUser } = require('../src/api');\nconst { show } = require('../src/format');\ntest('canon lowercases and trims', () => { assert.equal(canon('  Ada '), 'ada'); });\ntest('api finds user case-insensitively', () => { assert.deepEqual(getUser({ ada: 1 }, ' ADA '), 1); });\ntest('format shows canonical', () => { assert.equal(show(' ADA '), 'user:ada'); });\n`,
     } },
     prompt: `npm test fails: src/canon.js does not lowercase keys, breaking src/api.js lookups and src/format.js output. Fix the bug in canonicalization (keep trimming), keeping all three files consistent and all existing tests passing.`,
-    verifyCommands: ['npm test', 'node --test hidden/'],
+    verifyCommands: ['npm test', 'node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/extra.test.js', content: `const test = require('node:test');\nconst assert = require('node:assert/strict');\nconst { canon } = require('../src/canon');\ntest('canon idempotent on already-canonical input', () => { assert.equal(canon('ada'), 'ada'); });\ntest('canon handles inner spaces', () => { assert.equal(canon('  A D '), 'a d'); });\n` }],
   },
   {
@@ -161,7 +161,7 @@ export const TASKS = [
       'test/.gitkeep': '',
     } },
     prompt: `Implement clamp(x, lo, hi), lerp(a, b, t), and roundTo(x, decimals) in src/math.js AND write your own tests for them in test/ covering edges (clamp above/below, lerp t=0/t=1, negative decimals rounding). npm test must pass.`,
-    verifyCommands: ['npm test', 'node --test hidden/'],
+    verifyCommands: ['npm test', 'node --test "hidden/*.test.js"'],
     hiddenTests: [{ path: 'hidden/math.test.js', content: `const test = require('node:test');\nconst assert = require('node:assert/strict');\nconst m = require('../src/math');\ntest('hidden math checks', () => {\n  assert.equal(m.clamp(5, 1, 3), 3);\n  assert.equal(m.clamp(-2, 1, 3), 1);\n  assert.equal(m.lerp(10, 20, 0.5), 15);\n  assert.equal(m.roundTo(1.2345, 2), 1.23);\n  assert.equal(m.roundTo(2.675, 2), 2.68);\n});\n` }],
   },
   {
