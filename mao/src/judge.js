@@ -15,7 +15,7 @@ export const JUDGE_SCHEMA = {
 export const JUDGE_JSON_FORMAT = { type: 'json_schema', json_schema: { name: 'judge', strict: true, schema: JUDGE_SCHEMA } };
 
 export async function judgeFeature(cfg, { feature, diffInfo, gateLog, summary }) {
-  const system = renderPrompt(loadPrompt('judge.v1'), {
+  const system = renderPrompt(loadPrompt('judge.v2'), {
     FEATURE_DESCRIPTION: feature.description,
     WORKER_SUMMARY: summary || '(none)',
     DIFF: `${gateLog}\n\n${diffInfo.diff || '(empty diff)'}`.slice(0, 60_000),

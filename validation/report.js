@@ -32,8 +32,10 @@ export function renderResultsMd(metrics, generatedAt) {
   const mergesClean = merged.filter((m) => m.verifyOk).length;
   const mergeRate = merged.length ? mergesClean / merged.length : 0;
   let d;
-  if (merged.length && mergeRate < 0.4) d = { call: 'ARCHITECTURE-REWORK', note: `Coupling clean rate ${(mergeRate * 100).toFixed(0)}% < 40%` };
-  else if (merged.length && mergeRate < 0.7) d = { call: 'REDESIGN-COUPLING', note: `Coupling clean rate ${(mergeRate * 100).toFixed(0)}% in 40-70% band` };
+  // Coupling-rate rule applies only with a statistically meaningful sample (n >= 3 merges);
+  // otherwise fall back to the doc's merge-success table unchanged.
+  if (merged.length >= 3 && mergeRate < 0.4) d = { call: 'ARCHITECTURE-REWORK', note: `Coupling clean rate ${(mergeRate * 100).toFixed(0)}% < 40%` };
+  else if (merged.length >= 3 && mergeRate < 0.7) d = { call: 'REDESIGN-COUPLING', note: `Coupling clean rate ${(mergeRate * 100).toFixed(0)}% in 40-70% band (n=${merged.length})` };
   else d = decide({ mergeSuccess: s.mergeSuccess, costRatio: s.costRatio ?? 1, planQualityAvg: null });
   const rows = metrics.map((m) => `| ${m.taskId} | ${m.arm} | ${m.status} | ${m.planFeatureCount ?? '-'} | ${m.attemptsTotal} | ${m.couplingEscalations} | ${m.usage.orchestrator.in + m.usage.orchestrator.out} | ${m.usage.workers.in + m.usage.workers.out} | ${(m.wallClockMs / 1000).toFixed(0)}s |`).join('\n');
   return `# VALIDATION-RESULTS — DevAgent MAO on K3 (orchestrator) + Inkling (workers)
