@@ -14,7 +14,11 @@ describe('defaultVerifyCommands', () => {
     const c = defaultVerifyCommands({ hasPackageJson: true, packageJsonChanged: true, changedJs: ['a.js'] });
     expect(c.some((x) => x.includes('npm install'))).toBe(true);
     expect(c.some((x) => x.includes('npm run --if-present build'))).toBe(true);
-    expect(c.some((x) => x.includes('node --check a.js'))).toBe(true);
+    expect(c).toContain('node --check "a.js"');
+  });
+  it('emits one quoted node --check per changed js file', () => {
+    expect(defaultVerifyCommands({ hasPackageJson: false, packageJsonChanged: false, changedJs: ['a.js', 'dir/b.js'] }))
+      .toEqual(['node --check "a.js"', 'node --check "dir/b.js"']);
   });
 });
 

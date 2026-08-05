@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { scanProject } from './scanner.js';
 import * as realApi from './api.js';
 
@@ -40,6 +40,18 @@ export async function runPipeline(deps, opts) {
       if (result) outputs[fid] = result;
     });
     emit('wave-done', { wave: wi, ok: wave.filter((f) => outputs[f]).length, total: wave.length });
+    // Materialize this wave's passing outputs into baseDir so later waves spawn with them mounted.
+    // Same-wave file collisions stay last-write-wins here (wave's feature-id order); the
+    // authoritative candidate is still assembled via coupleFile below — coupling is untouched.
+    for (const fid of wave) {
+      const out = outputs[fid];
+      if (!out) continue;
+      for (const [rel, content] of out) {
+        const full = path.join(baseDir, rel);
+        await mkdir(path.dirname(full), { recursive: true });
+        await writeFile(full, content);
+      }
+    }
   }
 
   // coupling + materialize into baseDir (then verify from a CLEAN clone of source + candidate files)

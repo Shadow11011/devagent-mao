@@ -39,8 +39,20 @@ export function validatePlan(raw) {
     seen.add(f.id);
   }
   for (const f of raw.features) for (const d of f.dependencies) if (!seen.has(d)) throw new Error(`unknown dependency: ${d} in ${f.id}`);
-  const waves = (Array.isArray(raw.waves) && raw.waves.flat().length === raw.features.length) ? raw.waves : scheduleWaves(raw.features);
+  const waves = (Array.isArray(raw.waves) && wavesTrustworthy(raw)) ? raw.waves : scheduleWaves(raw.features);
   return { features: raw.features, sharedFiles: Array.isArray(raw.sharedFiles) ? raw.sharedFiles : [], waves };
+}
+
+// Trust K3's waves only if (a) they contain exactly the feature ids with no duplicates
+// and (b) every dependency sits in an earlier-or-equal wave index. Otherwise reschedule.
+function wavesTrustworthy(raw) {
+  const flat = raw.waves.flat();
+  const featureIds = new Set(raw.features.map((f) => f.id));
+  if (flat.length !== raw.features.length || new Set(flat).size !== flat.length || !flat.every((id) => featureIds.has(id))) return false;
+  const waveOf = new Map();
+  raw.waves.forEach((wave, i) => wave.forEach((id) => waveOf.set(id, i)));
+  for (const f of raw.features) for (const d of f.dependencies) if (waveOf.get(d) > waveOf.get(f.id)) return false;
+  return true;
 }
 
 export function scheduleWaves(features) {

@@ -9,7 +9,7 @@ export function defaultVerifyCommands({ hasPackageJson, packageJsonChanged, chan
   const cmds = [];
   if (hasPackageJson && packageJsonChanged) cmds.push('npm install --no-audit --no-fund --loglevel=error');
   if (hasPackageJson) cmds.push('npm run --if-present build', 'npm run --if-present test');
-  if (changedJs.length) cmds.push(changedJs.map((f) => `node --check ${f}`).join(' && '));
+  for (const f of changedJs) cmds.push(`node --check "${f}"`);
   return cmds;
 }
 

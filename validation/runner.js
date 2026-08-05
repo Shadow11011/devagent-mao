@@ -27,12 +27,20 @@ export async function runValidation(cfg = loadConfig(), { onlyTask = null, onlyA
       const outFile = path.join(RESULTS, `${task.id}-${arm}.json`);
       if (fs.existsSync(outFile)) { console.log(`skip ${task.id}-${arm} (done)`); continue; }
       console.log(`=== ${task.id} arm ${arm} start ===`);
-      const metrics = await runArm(cfg, task, arm).catch((err) => ({ taskId: task.id, arm, status: 'error', verifyOk: false, error: String(err.message).slice(0, 500), planFeatureCount: 0, mergeNeeded: 0, couplingEscalations: 0, attemptsTotal: 0, usage: { orchestrator: { in: 0, out: 0 }, workers: { in: 0, out: 0 } }, gpuLatencyMs: 0, wallClockMs: 0 }));
+      let metrics;
+      try { metrics = await runArm(cfg, task, arm); }
+      catch (err) {
+        // Error arms are NOT resume-skip records: write them aside so a plain re-run retries the arm.
+        const errRec = { taskId: task.id, arm, status: 'error', error: String(err.message).slice(0, 500) };
+        fs.writeFileSync(path.join(RESULTS, `${task.id}-${arm}.error.json`), JSON.stringify(errRec, null, 2));
+        console.log(`=== ${task.id} arm ${arm} -> error: ${errRec.error} (wrote ${task.id}-${arm}.error.json; re-run retries this arm) ===`);
+        continue;
+      }
       fs.writeFileSync(outFile, JSON.stringify(metrics, null, 2));
       console.log(`=== ${task.id} arm ${arm} -> ${metrics.status} ===`);
     }
   }
-  const metrics = fs.readdirSync(RESULTS).filter((f) => f.endsWith('.json')).sort().map((f) => JSON.parse(fs.readFileSync(path.join(RESULTS, f), 'utf8')));
+  const metrics = fs.readdirSync(RESULTS).filter((f) => f.endsWith('.json') && !f.endsWith('.error.json')).sort().map((f) => JSON.parse(fs.readFileSync(path.join(RESULTS, f), 'utf8')));
   fs.writeFileSync(path.join(REPO_ROOT, 'VALIDATION-RESULTS.md'), renderResultsMd(metrics, new Date().toISOString()));
   console.log('VALIDATION-RESULTS.md updated from', metrics.length, 'arm records');
 }

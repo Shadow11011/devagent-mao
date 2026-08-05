@@ -78,6 +78,26 @@ describe('runPipeline', () => {
     expect(verifyCalls).toBe(2);
   });
 
+  it('wave-1 outputs materialize into baseDir before wave-2 spawns', async () => {
+    let mounted;
+    const api = fakeApi({
+      planBuild: async () => ({ plan: { features: [
+        { id: 'a', description: 'add a', files: ['src/app.js'], newFiles: ['src/a.js'], dependencies: [] },
+        { id: 'b', description: 'b reads a', files: ['src/app.js', 'src/a.js'], newFiles: ['src/b.js'], dependencies: ['a'] },
+      ], sharedFiles: [], waves: [['a'], ['b']] }, usage: { prompt: 1, completion: 1, total: 2, cached: 0 }, attempts: 1 }),
+      runWorker: async (cfg, adapter, sb, { feature }) => {
+        if (feature.id === 'b') mounted = adapter.readFile(sb.id, 'src/a.js'); // mounted copy of wave-1's new file
+        await adapter.exec(sb.id, { cmd: `echo "// ${feature.id}" > src/${feature.id}.js`, timeoutMs: 5000 });
+        return { ok: true, summary: `built ${feature.id}`, text: '', usage: { input: 10, output: 5 }, durationMs: 1, gateLog: '' };
+      },
+    });
+    const cfg = loadConfig({ dataDir: path.join(root, 'data5') });
+    const store = new Store(cfg.dataDir);
+    const rec = await runPipeline({ cfg, store, adapter: new LocalAdapter(path.join(root, 'sbx5')), emit: () => { }, api }, { task: 'demo', sourceDir: src, runId: store.newRunId() });
+    expect(rec.status).toBe('verified');
+    expect(mounted).toBe('// a\n'); // wave-2 sandbox saw the exact content wave-1 produced
+  });
+
   it('bounded free retry: repeated TIMEOUT exhausts the feature instead of hanging', async () => {
     let workerCalls = 0;
     const api = fakeApi({

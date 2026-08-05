@@ -19,6 +19,15 @@ describe('validatePlan', () => {
     expect(p.features).toHaveLength(3);
     expect(p.waves).toEqual([['auth', 'dash'], ['pay']]);
   });
+  it('dup-id wave falls back to scheduleWaves', () => {
+    const p = validatePlan({ ...okPlan, waves: [['auth', 'dash'], ['auth']] }); // 'auth' twice, 'pay' missing
+    expect(p.waves).toEqual(scheduleWaves(okPlan.features));
+    expect(p.waves).toEqual([['auth', 'dash'], ['pay']]);
+  });
+  it('topo-invalid wave falls back and produces the correct order', () => {
+    const p = validatePlan({ ...okPlan, waves: [['pay'], ['auth', 'dash']] }); // pay's dep 'auth' sits in a later wave
+    expect(p.waves).toEqual([['auth', 'dash'], ['pay']]);
+  });
   it('rejects dup ids, unknown deps, empty features', () => {
     expect(() => validatePlan({ features: [], waves: [] })).toThrow();
     expect(() => validatePlan({ features: [{ ...okPlan.features[0] }, { ...okPlan.features[0] }] })).toThrow(/duplicate/i);

@@ -32,7 +32,10 @@ async function main() {
     return startChat(cfg, { sourceDir: repo, mode });
   }
   if (cmd === 'validate') {
-    const { runValidation } = await import('../validation/runner.js').catch(() => ({ runValidation: null }));
+    const { runValidation } = await import('../../validation/runner.js').catch((err) => {
+      if (err.code === 'ERR_MODULE_NOT_FOUND' && String(err.message).includes('validation/runner.js')) return { runValidation: null };
+      throw err;
+    });
     if (!runValidation) { console.error('validate: implemented in Task 16 (validation/runner.js missing).'); process.exit(2); }
     await runValidation(cfg, { onlyTask: opt('task', null), onlyArm: opt('arm', null) });
     return;

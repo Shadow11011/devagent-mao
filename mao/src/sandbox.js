@@ -65,9 +65,15 @@ export class LocalAdapter {
         timedOut = true;
         try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already dead */ }
       }, timeoutMs);
+      let settled = false;
+      const closeFds = () => { if (settled) return; settled = true; clearTimeout(timer); fs.closeSync(outFd); fs.closeSync(errFd); };
+      child.on('error', (err) => { // spawn failure: 'close' may still fire after this, so close fds exactly once
+        closeFds();
+        fs.appendFileSync(stderrPath, `spawn-error: ${err.message}\n`);
+        resolve({ exitCode: 1, stdoutPath, stderrPath, durationMs: Date.now() - started, timedOut: false });
+      });
       child.on('close', (code) => {
-        clearTimeout(timer);
-        fs.closeSync(outFd); fs.closeSync(errFd);
+        closeFds();
         resolve({ exitCode: timedOut ? 124 : (code ?? 1), stdoutPath, stderrPath, durationMs: Date.now() - started, timedOut });
       });
     });
