@@ -77,4 +77,21 @@ describe('runPipeline', () => {
     expect(rec.verification.fixesApplied).toBe(1);
     expect(verifyCalls).toBe(2);
   });
+
+  it('bounded free retry: repeated TIMEOUT exhausts the feature instead of hanging', async () => {
+    let workerCalls = 0;
+    const api = fakeApi({
+      planBuild: async () => ({ plan: { features: [
+        { id: 'a', description: 'add a', files: ['src/app.js'], newFiles: ['src/a.js'], dependencies: [] },
+      ], sharedFiles: [], waves: [['a']] }, usage: { prompt: 1, completion: 1, total: 2, cached: 0 }, attempts: 1 }),
+      runWorker: async () => { workerCalls++; return { ok: false, failureCode: 'TIMEOUT', failureDetail: 'endpoint down', usage: { input: 0, output: 0 }, durationMs: 1, gateLog: '' }; },
+    });
+    const cfg = loadConfig({ dataDir: path.join(root, 'data4') });
+    const store = new Store(cfg.dataDir);
+    const rec = await runPipeline({ cfg, store, adapter: new LocalAdapter(path.join(root, 'sbx4')), emit: () => { }, api }, { task: 'demo', sourceDir: src, runId: store.newRunId() });
+    expect(rec.features.a.exhausted).toBe(true);
+    expect(rec.features.a.attempts).toBe(cfg.maxWorkerAttempts);
+    expect(rec.features.a.wave).toBe(0);
+    expect(workerCalls).toBe(cfg.maxWorkerAttempts + 1); // maxWorkerAttempts counted + 1 free infra retry
+  });
 });

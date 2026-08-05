@@ -29,12 +29,14 @@ export async function runPipeline(deps, opts) {
   await api.cloneProject(opts.sourceDir, baseDir);
 
   const outputs = {}; // featureId -> Map(rel->content)
+  const workerEndpoint = opts.workerEndpoint ?? cfg.models.worker;
+  const workerProfile = opts.workerProfile ?? cfg.workerProfiles.worker;
   for (let wi = 0; wi < plan.waves.length; wi++) {
     const wave = plan.waves[wi];
     emit('wave-start', { wave: wi, features: wave });
     await mapLimit(wave, cfg.concurrency, async (fid) => {
       const feature = plan.features.find((f) => f.id === fid);
-      const result = await buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, wi);
+      const result = await buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, wi, workerEndpoint, workerProfile);
       if (result) outputs[fid] = result;
     });
     emit('wave-done', { wave: wi, ok: wave.filter((f) => outputs[f]).length, total: wave.length });
@@ -85,19 +87,20 @@ export async function runPipeline(deps, opts) {
   }
 }
 
-async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, waveIndex = null) {
-  const { cfg, store, adapter } = deps;
+async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, waveIndex = null, workerEndpoint = null, workerProfile = null) {
+  const { cfg, adapter } = deps;
   let lesson = '';
+  let freeRetryUsed = false; // exactly ONE free infra retry per feature, whenever TIMEOUT lands
   for (let attempt = 1; attempt <= cfg.maxWorkerAttempts; attempt++) {
     const sid = `${opts.runId}-${feature.id}-a${attempt}`;
     emit('worker-start', { feature: feature.id, attempt });
     const sb = await adapter.spawn({ id: sid, sourceDir: baseDir, files: feature.files, homeConfig: api.workerHomeConfig() });
-    const w = await api.runWorker(cfg, adapter, sb, { feature, lesson, endpoint: opts.workerEndpoint, profile: opts.workerProfile });
+    const w = await api.runWorker(cfg, adapter, sb, { feature, lesson, endpoint: workerEndpoint, profile: workerProfile });
     totals.workers.input += w.usage.input; totals.workers.output += w.usage.output;
     if (!w.ok) {
       const infra = w.failureCode === 'TIMEOUT';
       emit('worker-error', { feature: feature.id, attempt, code: w.failureCode, detail: w.failureDetail.slice(0, 400), infra });
-      if (infra && attempt === 1) { attempt--; lesson = ''; continue; } // one free infra retry
+      if (infra && !freeRetryUsed) { freeRetryUsed = true; lesson = ''; attempt--; continue; } // one free infra retry
       lesson = `${w.failureCode}: ${w.failureDetail}`;
       continue;
     }
@@ -106,11 +109,11 @@ async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir
     const j = await api.judgeFeature(cfg, { feature, diffInfo, gateLog: w.gateLog, summary: w.summary });
     totals.orchestrator.input += j.usage.prompt; totals.orchestrator.output += j.usage.completion;
     rec.features[feature.id] = { attempts: attempt, verdicts: [...(rec.features[feature.id]?.verdicts ?? []), j.verdict], summary: w.summary, usage: w.usage, wave: waveIndex };
-    if (j.verdict === 'pass') return collectOutputs(adapter, sid, diffInfo, feature);
+    if (j.verdict === 'pass') { emit('worker-judged', { feature: feature.id, attempt, verdict: 'pass' }); return collectOutputs(adapter, sid, diffInfo, feature); }
     lesson = j.lesson ?? j.reason;
     emit('worker-judged', { feature: feature.id, attempt, verdict: 'fail', class: j.failureClass });
   }
-  rec.features[feature.id] = { ...(rec.features[feature.id] ?? { verdicts: [] }), attempts: cfg.maxWorkerAttempts, exhausted: true };
+  rec.features[feature.id] = { ...(rec.features[feature.id] ?? { verdicts: [] }), attempts: cfg.maxWorkerAttempts, exhausted: true, wave: waveIndex };
   return null;
 }
 
