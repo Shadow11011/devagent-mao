@@ -54,6 +54,18 @@ export async function runPipeline(deps, opts) {
     }
   }
 
+  // Status semantics: feature-level failure IS run-level failure. If ANY feature exhausted its
+  // attempts with no passing output, the partial candidate would trivially pass verification —
+  // fail the run instead, and skip verification (and K3 fix calls) entirely.
+  const exhaustedIds = plan.features.filter((f) => !outputs[f.id] || rec.features[f.id]?.exhausted).map((f) => f.id);
+  if (exhaustedIds.length) {
+    rec.status = 'failed';
+    rec.verification = { ok: false, log: `features exhausted: ${exhaustedIds.join(', ')}`, fixesApplied: 0, commands: [] };
+    rec.failedFeatures = exhaustedIds;
+    emit('failed', { reason: 'features-exhausted', features: exhaustedIds });
+    return finish();
+  }
+
   // coupling + materialize into baseDir (then verify from a CLEAN clone of source + candidate files)
   const candidate = new Map(); // rel -> content
   const byFile = groupByFile(plan, outputs);
@@ -70,6 +82,16 @@ export async function runPipeline(deps, opts) {
       content = c.content;
     }
     candidate.set(rel, content);
+  }
+
+  // No feature exhausted, but nothing was produced (e.g. all diffs empty): an empty candidate
+  // vacuously passes verification — that is a failed run, never a verified one.
+  if (!candidate.size) {
+    rec.status = 'failed';
+    rec.verification = { ok: false, log: 'empty candidate: no produced files', fixesApplied: 0, commands: [] };
+    rec.failedFeatures = [];
+    emit('failed', { reason: 'empty-candidate' });
+    return finish();
   }
 
   // verification with fix loop

@@ -114,4 +114,32 @@ describe('runPipeline', () => {
     expect(rec.features.a.wave).toBe(0);
     expect(workerCalls).toBe(cfg.maxWorkerAttempts + 1); // maxWorkerAttempts counted + 1 free infra retry
   });
+
+  it('all features exhausted => failed (never vacuous verified), verification skipped', async () => {
+    const events = [];
+    let verifyCalls = 0, fixCalls = 0;
+    const api = fakeApi({
+      judgeFeature: async () => ({ verdict: 'fail', failureClass: 'logic', reason: 'never good enough', lesson: 'try again', usage: { prompt: 1, completion: 1, total: 2, cached: 0 } }),
+      verifyCandidate: async () => { verifyCalls++; return { ok: true, stagePath: '', log: 'ok' }; },
+      requestVerifyFix: async () => { fixCalls++; return { fixes: null, unfixable: true, reason: 'n/a', usage: { prompt: 0, completion: 0, total: 0, cached: 0 } }; },
+    });
+    const cfg = loadConfig({ dataDir: path.join(root, 'data6') });
+    const store = new Store(cfg.dataDir);
+    const rec = await runPipeline(
+      { cfg, store, adapter: new LocalAdapter(path.join(root, 'sbx6')), emit: (t, d) => events.push({ type: t, data: d }), api },
+      { task: 'demo', sourceDir: src, runId: store.newRunId() },
+    );
+    expect(rec.status).toBe('failed');
+    expect(rec.failedFeatures).toEqual(['a', 'b']);
+    expect(rec.verification).toEqual({ ok: false, log: 'features exhausted: a, b', fixesApplied: 0, commands: [] });
+    expect(verifyCalls).toBe(0); // verifyCandidate NOT called
+    expect(fixCalls).toBe(0); // no K3 fix calls
+    const failedEv = events.find((e) => e.type === 'failed');
+    expect(failedEv?.data.reason).toBe('features-exhausted');
+    expect(failedEv?.data.features).toEqual(['a', 'b']);
+    expect(events.some((e) => e.type === 'verified')).toBe(false);
+    const onDisk = JSON.parse(readFileSync(path.join(store.runPath(rec.runId), 'run.json'), 'utf8'));
+    expect(onDisk.status).toBe('failed');
+    expect(onDisk.failedFeatures).toEqual(['a', 'b']);
+  });
 });
