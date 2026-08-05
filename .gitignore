@@ -4,3 +4,5 @@ mao/data/
 validation/fixtures/**/node_modules/
 validation/results/
 validation/repos/
+validation/fixtures/
+node_modules/
