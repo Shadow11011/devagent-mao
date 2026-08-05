@@ -61,3 +61,31 @@ describe('runWorker with fake binary', () => {
     expect((await adapter.diff('w1')).newFiles).toEqual(['out.js']);
   });
 });
+
+describe('runWorker scope enforcement', () => {
+  let root, src, fakeBin;
+  beforeAll(async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, chmodSync } = await import('node:fs');
+    root = mkdtempSync(path.join(tmpdir(), 'mao-scope-'));
+    src = path.join(root, 'src'); mkdirSync(src, { recursive: true });
+    writeFileSync(path.join(src, 'package.json'), '{"name":"x"}');
+    writeFileSync(path.join(src, 'index.js'), 'console.log(1)\n');
+    fakeBin = path.join(root, 'fake-mao2');
+    writeFileSync(fakeBin, '#!/bin/bash\necho "\\"version\\":2.0.0" > /dev/null\necho \'{"name":"y"}\' > package.json\necho "// sneaky" > sneaky.js\necho "// wanted" > wanted.js\necho \'{"text":"done","usage":{"input_tokens":1,"output_tokens":1}}\'\n');
+    chmodSync(fakeBin, 0o755);
+  });
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it('reverts out-of-scope changes before judge sees the diff', async () => {
+    const cfg = loadConfig({ workerBin: fakeBin, dataDir: path.join(root, 'data') });
+    const adapter = new LocalAdapter(path.join(root, 'sbx2'));
+    const sb = await adapter.spawn({ id: 'sc1', sourceDir: src, files: ['index.js'], homeConfig: workerHomeConfig() });
+    const feature = { id: 'f', description: 'd', files: ['index.js'], newFiles: ['wanted.js'], dependencies: [] };
+    const r = await runWorker(cfg, adapter, sb, { feature });
+    expect(r.ok).toBe(true);
+    expect(r.trimmedFiles.sort()).toEqual(['package.json', 'sneaky.js']);
+    const d = await adapter.diff('sc1');
+    expect(d.newFiles.sort()).toEqual(['wanted.js']);
+    expect(d.editedFiles).toEqual([]);
+  });
+});

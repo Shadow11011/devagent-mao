@@ -30,13 +30,13 @@ export function parseTrailingJson(stdout) {
   const endPos = text.trimEnd().length;
   let fallback = null;
   for (const cand of balancedObjects(text)) {
-    if (cand.end === endPos || cand.end === endPos - 1) {
+    if (cand.end === endPos) {
       try { return JSON.parse(text.slice(cand.start, cand.end)); } catch { /* keep scanning */ }
     } else if (fallback === null) {
       try { fallback = JSON.parse(text.slice(cand.start, cand.end)); } catch { /* not json */ }
     }
   }
-  if (fallback !== null) return fallback;
+  if (fallback !== null) { console.error('[parseTrailingJson] warning: no terminal JSON object; using latest balanced fallback'); return fallback; }
   throw new Error('no JSON report found in worker stdout');
 }
 
@@ -102,7 +102,24 @@ export async function runWorker(cfg, adapter, sandbox, {
     return { ok: false, failureCode: 'EXEC_FAIL', failureDetail: `exit=${r.exitCode}; stderr tail: ${stderrTail}`, summary: '', text: report.text ?? '', usage: normU(report.usage), durationMs: r.durationMs, gateLog: '' };
   }
   const gateLog = await qualityGate(adapter, sandbox.id);
-  return { ok: true, failureCode: null, failureDetail: '', summary: extractSummary(report.text), text: report.text ?? '', usage: normU(report.usage), durationMs: r.durationMs, gateLog };
+  // Scope enforcement: workers may only CREATE feature.newFiles and EDIT feature.files.
+  // Model obedience is not trusted — violations are reverted here so the judge sees a
+  // contract-shaped diff (and integration owners like package.json can't be clobbered).
+  const trimmed = await enforceScope(adapter, sandbox.id, feature);
+  return { ok: true, failureCode: null, failureDetail: trimmed.length ? `out-of-scope changes reverted: ${trimmed.join(', ')}` : '', summary: extractSummary(report.text), text: report.text ?? '', usage: normU(report.usage), durationMs: r.durationMs, gateLog, trimmedFiles: trimmed };
+
+async function enforceScope(adapter, id, feature) {
+  const allowed = new Set([...(feature.files ?? []), ...(feature.newFiles ?? [])]);
+  if (!allowed.size) return [];
+  const d = await adapter.diff(id);
+  const trimmed = [];
+  for (const rel of d.newFiles) if (!allowed.has(rel)) { await adapter.exec(id, { cmd: `rm -f -- ${shq(rel)}`, timeoutMs: 10_000 }); trimmed.push(rel); }
+  for (const rel of d.editedFiles) if (!allowed.has(rel)) { await adapter.exec(id, { cmd: `git checkout -- ${shq(rel)}`, timeoutMs: 10_000 }); trimmed.push(rel); }
+  for (const rel of d.deletedFiles) if (!allowed.has(rel)) { await adapter.exec(id, { cmd: `git checkout -- ${shq(rel)}`, timeoutMs: 10_000 }); trimmed.push(rel); }
+  return trimmed;
+}
+
+function shq(p) { return `'${String(p).replace(/'/g, `'\\''`)}'`; }
 }
 
 function normU(u = {}) { return { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0 }; }
