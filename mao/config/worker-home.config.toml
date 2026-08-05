@@ -1,0 +1,14 @@
+[provider]
+openai_reasoning_effort = "low"
+
+[providers.inkling]
+type = "openai-compatible"
+base_url = "https://oluwafemifrancisca27--ep-inkling-nvfp4-server.us-west.modal.direct/v1"
+api_key_env = "MODAL_PROXY_TOKEN"
+default_model = "thinkingmachines/Inkling-NVFP4"
+
+[providers.kimi-k3]
+type = "openai-compatible"
+base_url = "https://oluwafemifrancisca27--ep-kimi-k3-server.us-west.modal.direct/v1"
+api_key_env = "MODAL_PROXY_TOKEN"
+default_model = "moonshotai/Kimi-K3"
