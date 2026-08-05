@@ -39,7 +39,7 @@ export async function verifyCandidate(cfg, { runId, sourceDir, files, commands, 
 
 function runCmd(cwd, cmd, timeoutMs = 10 * 60_000) {
   return new Promise((resolve) => {
-    const child = spawn('bash', ['-lc', cmd], { cwd, env: { ...process.env, CI: 'true' } });
+    const child = spawn('bash', ['-c', cmd], { cwd, env: { ...process.env, CI: 'true' } });
     let out = '';
     const cap = (d) => { out += d.toString(); if (out.length > 200_000) out = out.slice(-200_000); };
     child.stdout.on('data', cap); child.stderr.on('data', cap);

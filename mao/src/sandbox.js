@@ -59,7 +59,7 @@ export class LocalAdapter {
     const errFd = fs.openSync(stderrPath, 'w');
     const started = Date.now();
     return new Promise((resolve) => {
-      const child = spawn('bash', ['-lc', cmd], { cwd: dir, env: { ...process.env, ...env }, stdio: ['ignore', outFd, errFd], detached: true });
+      const child = spawn('bash', ['-c', cmd], { cwd: dir, env: { ...process.env, ...env }, stdio: ['ignore', outFd, errFd], detached: true });
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
