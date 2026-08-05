@@ -1,0 +1,80 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { runPipeline } from '../src/coordinator.js';
+import { Store } from '../src/store.js';
+import { LocalAdapter } from '../src/sandbox.js';
+import { loadConfig } from '../src/config.js';
+
+let root, src;
+beforeAll(() => {
+  root = mkdtempSync(path.join(tmpdir(), 'mao-coord-'));
+  src = path.join(root, 'proj'); mkdirSync(path.join(src, 'src'), { recursive: true });
+  writeFileSync(path.join(src, 'package.json'), '{"name":"p","scripts":{"build":"node src/app.js"}}');
+  writeFileSync(path.join(src, 'src', 'app.js'), 'console.log("base")\n');
+});
+afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+function fakeApi(behavior) {
+  return {
+    planBuild: async () => ({ plan: { features: [
+      { id: 'a', description: 'add a', files: ['src/app.js'], newFiles: ['src/a.js'], dependencies: [] },
+      { id: 'b', description: 'add b (needs a)', files: ['src/app.js'], newFiles: ['src/b.js'], dependencies: ['a'] },
+    ], sharedFiles: [], waves: [['a'], ['b']] }, usage: { prompt: 1, completion: 1, total: 2, cached: 0 }, attempts: 1 }),
+    runWorker: async (cfg, adapter, sb, { feature }) => {
+      await adapter.exec(sb.id, { cmd: `echo "// ${feature.id}" > src/${feature.id}.js`, timeoutMs: 5000 });
+      return { ok: true, summary: `built ${feature.id}`, text: '', usage: { input: 10, output: 5 }, durationMs: 1, gateLog: '' };
+    },
+    judgeFeature: async () => ({ verdict: 'pass', failureClass: null, reason: 'ok', lesson: null, usage: { prompt: 1, completion: 1, total: 2, cached: 0 } }),
+    coupleFile: async (cfg, { variants }) => ({ content: variants[0].content, conflicts: [], escalated: false, usage: { prompt: 0, completion: 0, total: 0, cached: 0 } }),
+    verifyCandidate: async () => ({ ok: true, stagePath: '', log: 'ok' }),
+    requestVerifyFix: async () => ({ fixes: null, unfixable: true, reason: 'n/a', usage: { prompt: 0, completion: 0, total: 0, cached: 0 } }),
+    ...behavior,
+  };
+}
+
+describe('runPipeline', () => {
+  it('runs waves in dependency order and writes run.json', async () => {
+    const cfg = loadConfig({ dataDir: path.join(root, 'data1') });
+    const store = new Store(cfg.dataDir);
+    const events = [];
+    const rec = await runPipeline(
+      { cfg, store, adapter: new LocalAdapter(path.join(root, 'sbx1')), emit: (t, d) => events.push(t), api: fakeApi() },
+      { task: 'demo', sourceDir: src, runId: store.newRunId() },
+    );
+    expect(rec.status).toBe('verified');
+    expect(Object.keys(rec.features).sort()).toEqual(['a', 'b']);
+    expect(rec.totals.workers).toEqual({ input: 20, output: 10 });
+    expect(events).toContain('plan');
+    expect(events).toContain('wave-start');
+    expect(events).toContain('verified');
+    const onDisk = JSON.parse(readFileSync(path.join(store.runPath(rec.runId), 'run.json'), 'utf8'));
+    expect(onDisk.status).toBe('verified');
+  });
+
+  it('retries failed worker with lesson, max attempts respected', async () => {
+    let judgeCalls = 0;
+    const api = fakeApi({ judgeFeature: async () => (++judgeCalls === 1 ? { verdict: 'fail', failureClass: 'logic', reason: 'bad', lesson: 'do X instead', usage: { prompt: 1, completion: 1, total: 2, cached: 0 } } : { verdict: 'pass', failureClass: null, reason: 'ok', lesson: null, usage: { prompt: 1, completion: 1, total: 2, cached: 0 } }) });
+    const cfg = loadConfig({ dataDir: path.join(root, 'data2') });
+    const store = new Store(cfg.dataDir);
+    const rec = await runPipeline({ cfg, store, adapter: new LocalAdapter(path.join(root, 'sbx2')), emit: () => { }, api }, { task: 'demo', sourceDir: src, runId: store.newRunId() });
+    expect(rec.status).toBe('verified');
+    const atts = Object.values(rec.features).map((f) => f.attempts);
+    expect(Math.max(...atts)).toBe(2);
+  });
+
+  it('verification fix loop: fails once, fix applied, then passes', async () => {
+    let verifyCalls = 0;
+    const api = fakeApi({
+      verifyCandidate: async () => (++verifyCalls === 1 ? { ok: false, stagePath: '', log: 'boom' } : { ok: true, stagePath: '', log: 'ok' }),
+      requestVerifyFix: async () => ({ fixes: [{ path: 'src/app.js', content: 'console.log("fixed")\n' }], unfixable: false, reason: 'typo', usage: { prompt: 1, completion: 1, total: 2, cached: 0 } }),
+    });
+    const cfg = loadConfig({ dataDir: path.join(root, 'data3') });
+    const store = new Store(cfg.dataDir);
+    const rec = await runPipeline({ cfg, store, adapter: new LocalAdapter(path.join(root, 'sbx3')), emit: () => { }, api }, { task: 'demo', sourceDir: src, runId: store.newRunId() });
+    expect(rec.status).toBe('verified');
+    expect(rec.verification.fixesApplied).toBe(1);
+    expect(verifyCalls).toBe(2);
+  });
+});
