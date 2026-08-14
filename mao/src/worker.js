@@ -72,12 +72,13 @@ export function extractSummary(text) {
 }
 
 export async function runWorker(cfg, adapter, sandbox, {
-  feature, lesson = '', okfContext = '', endpoint = cfg.models.worker, profile = cfg.workerProfiles.worker, timeoutMs = cfg.workerTimeoutMs,
+  feature, lesson = '', okfContext = '', skillsContext = '', endpoint = cfg.models.worker, profile = cfg.workerProfiles.worker, timeoutMs = cfg.workerTimeoutMs,
 }) {
   const taskMd = renderPrompt(loadPrompt('worker.v1'), {
     FEATURE_DESCRIPTION: feature.description,
     FILES_LIST: (feature.files ?? []).map((f) => `- ${f}`).join('\n') || '(none)',
     OKF_CONTEXT: okfContext ? `RELEVANT LESSONS FROM PRIOR BUILDS (use these, but judge if they apply to this slice):\n${okfContext}` : '',
+    SKILLS_CONTEXT: skillsContext || '',
     LESSON: lesson ? `LESSON FROM PREVIOUS FAILED ATTEMPT (do not repeat it):\n${lesson}` : '',
   });
   await fsp.writeFile(path.join(sandbox.dir, 'MAOWORK.md'), taskMd);

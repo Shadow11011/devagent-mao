@@ -8,6 +8,8 @@ You have ONLY the mounted files plus whatever you create. Do not invent repo str
 
 {{OKF_CONTEXT}}
 
+{{SKILLS_CONTEXT}}
+
 {{LESSON}}
 
 Rules:

@@ -4,6 +4,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { scanProject } from './scanner.js';
 import * as realApi from './api.js';
 import { createOkf } from './okf/index.js';
+import { discoverSkills, formatSkillsForPrompt } from './skills.js';
 
 export async function runPipeline(deps, opts) {
   const { cfg, store, adapter, okf: injectedOkf } = deps;
@@ -19,6 +20,13 @@ export async function runPipeline(deps, opts) {
   // byte-for-byte default path both stay testable.
   const okf = injectedOkf ?? (process.env.MAO_OKF === '0' ? null : createOkf({ root: path.join(cfg.dataDir, 'okf') }));
   const repoId = okf ? okf.store.repoHash(opts.sourceDir) : null;
+
+  // Skills (capability layer). Discovered once per build from project + user
+  // locations; injected as a rendered block into each worker's prompt. Disable
+  // with MAO_SKILLS=0 or override via deps.skillsContext (tests).
+  const skillsContext = deps.skillsContext ?? (process.env.MAO_SKILLS === '0'
+    ? ''
+    : formatSkillsForPrompt(discoverSkills({ cwd: opts.sourceDir }).skills));
 
   // scan + plan
   const scan = scanProject(opts.sourceDir);
@@ -44,7 +52,7 @@ export async function runPipeline(deps, opts) {
     emit('wave-start', { wave: wi, features: wave });
     await mapLimit(wave, cfg.concurrency, async (fid) => {
       const feature = plan.features.find((f) => f.id === fid);
-      const result = await buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, wi, workerEndpoint, workerProfile, okf, repoId);
+      const result = await buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, wi, workerEndpoint, workerProfile, okf, repoId, skillsContext);
       if (result) outputs[fid] = result;
     });
     emit('wave-done', { wave: wi, ok: wave.filter((f) => outputs[f]).length, total: wave.length });
@@ -170,7 +178,7 @@ export async function runPipeline(deps, opts) {
   }
 }
 
-async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, waveIndex = null, workerEndpoint = null, workerProfile = null, okf = null, repoId = null) {
+async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, waveIndex = null, workerEndpoint = null, workerProfile = null, okf = null, repoId = null, skillsContext = '') {
   const { cfg, adapter } = deps;
   // OKF recall is stable across attempts (pre-prompt retrieval). The retry
   // `lesson` is a separate, attempt-scoped signal from the judge.
@@ -186,7 +194,7 @@ async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir
       const pre = await adapter.exec(sid, { cmd: 'npm install --no-audit --no-fund --loglevel=error', timeoutMs: 300_000 });
       emit('preinstall', { feature: feature.id, attempt, exitCode: pre.exitCode });
     }
-    const w = await api.runWorker(cfg, adapter, sb, { feature, lesson, okfContext, endpoint: workerEndpoint, profile: workerProfile });
+    const w = await api.runWorker(cfg, adapter, sb, { feature, lesson, okfContext, skillsContext, endpoint: workerEndpoint, profile: workerProfile });
     totals.workers.input += w.usage.input; totals.workers.output += w.usage.output;
     if (!w.ok) {
       const infra = w.failureCode === 'TIMEOUT';

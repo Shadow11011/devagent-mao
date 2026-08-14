@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync, chmodSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, chmodSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseTrailingJson, extractSummary, runWorker, workerHomeConfig } from '../src/worker.js';
@@ -59,6 +59,17 @@ describe('runWorker with fake binary', () => {
     expect(r.usage).toEqual({ input: 11, output: 7 });
     expect(r.summary).toBe('wrote out.js');
     expect((await adapter.diff('w1')).newFiles).toEqual(['out.js']);
+  });
+
+  it('renders skills context into MAOWORK.md', async () => {
+    const cfg = loadConfig({ workerBin: fakeBin, dataDir: path.join(root, 'data') });
+    const adapter = new LocalAdapter(path.join(root, 'sbx'));
+    const sb = await adapter.spawn({ id: 'w-skills', sourceDir: src, files: [], homeConfig: workerHomeConfig() });
+    const skills = '<available_skills>\n  <skill>\n    <name>pdf-tools</name>\n  </skill>\n</available_skills>';
+    await runWorker(cfg, adapter, sb, { feature: { id: 'f1', description: 'd', files: [], newFiles: ['out.js'], dependencies: [] }, skillsContext: skills });
+    const taskMd = readFileSync(path.join(sb.dir, 'MAOWORK.md'), 'utf8');
+    expect(taskMd).toContain('pdf-tools');
+    expect(taskMd).toContain('<available_skills>');
   });
 });
 
