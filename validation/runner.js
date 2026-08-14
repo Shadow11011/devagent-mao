@@ -45,7 +45,7 @@ export async function runValidation(cfg = loadConfig(), { onlyTask = null, onlyA
   console.log('VALIDATION-RESULTS.md updated from', metrics.length, 'arm records');
 }
 
-async function runArm(cfg, task, arm) {
+export async function runArm(cfg, task, arm) {
   const sourceDir = baseDirFor(task);
   const store = new Store(path.join(cfg.dataDir, 'validation'));
   const runId = `val-${task.id}-${arm.toLowerCase()}-${Date.now().toString(36)}`;

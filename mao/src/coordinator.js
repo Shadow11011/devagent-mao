@@ -158,28 +158,44 @@ export async function runPipeline(deps, opts) {
   function recordOkf(okf, opts, rec, repoId) {
     if (!okf) return;
     // Canonical OKF write on success AND failure (HARNESS-SPEC: no exceptions).
-    // One problem type per run keeps project-scoped recall focused. The evidence
-    // is the actual build trace, not a model-generated narrative.
+    // One doc per feature captures the intermediate judge lessons, which are what
+    // warm recall uses to cut future attempts. The whole-run doc is secondary.
+    const featureDocs = Object.entries(rec.features ?? {}).map(([fid, f]) => {
+      const lessons = (f.judgeReasons ?? [])
+        .filter((r) => r.lesson)
+        .map((r) => r.lesson);
+      const problemType = fid;
+      const failed = (f.verdicts ?? []).some((v) => v === 'fail');
+      const evidence = {
+        attempted: `Feature: ${fid}`,
+        worked: failed ? '' : `Verified feature: ${fid}`,
+        failed: failed ? `Attempts: ${f.attempts}; verdicts: ${(f.verdicts ?? []).join(',')}` : '',
+        lesson: lessons.join('\n') || (failed ? `Feature ${fid} failed after ${f.attempts} attempts` : `Verified feature ${fid}`),
+        stack: scan?.stack,
+        model: cfg.models.orchestrator.model,
+      };
+      return { scope: 'project', repo: repoId, problemType, evidence };
+    });
+
     const failed = rec.status !== 'verified';
-    const attempted = `Build task: ${opts.task}`;
-    const worked = failed ? '' : `Features verified: ${rec.plan?.features?.map((f) => f.id).join(', ') ?? ''}`;
-    const failedWhat = failed
-      ? (rec.failedFeatures?.length
-          ? `Exhausted features: ${rec.failedFeatures.join(', ')}`
-          : (rec.error ?? 'verification failed'))
-      : '';
-    const lesson = failed
-      ? firstFailureLesson(rec)
-      : `Verified build for: ${opts.task}`;
-    const problemType = rec.plan?.features?.[0]?.id ? `build-${rec.plan.features[0].id}` : 'build';
+    const runDoc = {
+      scope: 'project',
+      repo: repoId,
+      problemType: rec.plan?.features?.[0]?.id ? `build-${rec.plan.features[0].id}` : 'build',
+      evidence: {
+        attempted: `Build task: ${opts.task}`,
+        worked: failed ? '' : `Features verified: ${rec.plan?.features?.map((f) => f.id).join(', ') ?? ''}`,
+        failed: failed ? (rec.failedFeatures?.length ? `Exhausted features: ${rec.failedFeatures.join(', ')}` : (rec.error ?? 'verification failed')) : '',
+        lesson: failed ? firstFailureLesson(rec) : `Verified build for: ${opts.task}`,
+        stack: scan?.stack,
+        model: cfg.models.orchestrator.model,
+      },
+    };
+
     try {
-      okf.record({
-        scope: 'project',
-        repo: repoId,
-        problemType,
-        evidence: { attempted, worked, failed: failedWhat, lesson, stack: scan?.stack, model: cfg.models.orchestrator.model },
-      });
-      rec.okf = { recorded: true, problemType };
+      for (const doc of featureDocs) okf.record(doc);
+      okf.record(runDoc);
+      rec.okf = { recorded: true, features: featureDocs.length, run: true };
     } catch (err) {
       // Memory failure must never fail the build.
       rec.okf = { recorded: false, error: err.message };
