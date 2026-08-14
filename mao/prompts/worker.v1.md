@@ -6,6 +6,8 @@ FEATURE:
 You have ONLY the mounted files plus whatever you create. Do not invent repo structure you cannot see. Read the files listed below first:
 {{FILES_LIST}}
 
+{{OKF_CONTEXT}}
+
 {{LESSON}}
 
 Rules:

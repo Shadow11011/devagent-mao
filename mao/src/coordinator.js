@@ -3,9 +3,10 @@ import path from 'node:path';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { scanProject } from './scanner.js';
 import * as realApi from './api.js';
+import { createOkf } from './okf/index.js';
 
 export async function runPipeline(deps, opts) {
-  const { cfg, store, adapter } = deps;
+  const { cfg, store, adapter, okf: injectedOkf } = deps;
   const api = { ...realApi, ...(deps.api ?? {}) };
   const emit = (type, data = {}) => { store.appendEvent(opts.runId, { type, data }); deps.emit?.(type, data); };
   const started = Date.now();
@@ -13,11 +14,18 @@ export async function runPipeline(deps, opts) {
   const addU = (bucket, u) => { bucket.input += u.input ?? u.prompt ?? 0; bucket.output += u.output ?? u.completion ?? 0; };
   const rec = { runId: opts.runId, task: opts.task, sourceDir: opts.sourceDir, status: 'failed', plan: null, features: {}, coupling: {}, verification: null, totals, createdAt: new Date().toISOString() };
 
+  // OKF memory (Continual Harness). Injectable via deps.okf for tests; default
+  // creates one under cfg.dataDir/okf. Opt-out via MAO_OKF=0 so the zero-dep and
+  // byte-for-byte default path both stay testable.
+  const okf = injectedOkf ?? (process.env.MAO_OKF === '0' ? null : createOkf({ root: path.join(cfg.dataDir, 'okf') }));
+  const repoId = okf ? okf.store.repoHash(opts.sourceDir) : null;
+
   // scan + plan
   const scan = scanProject(opts.sourceDir);
   emit('scan', { files: scan.files.length, truncated: scan.truncated });
+  const okfContext = okf ? okf.recallContext(opts.task, { scope: 'project', repo: repoId }) : '';
   let planOut;
-  try { planOut = await api.planBuild(cfg, { summary: scan.summary, okfContext: '', prompt: opts.task, effort: opts.orchestratorEffort }); }
+  try { planOut = await api.planBuild(cfg, { summary: scan.summary, okfContext, prompt: opts.task, effort: opts.orchestratorEffort }); }
   catch (err) { rec.status = 'plan-failed'; rec.error = err.message; emit('plan-failed', { error: err.message }); return finish(); }
   const plan = planOut.plan;
   rec.plan = plan;
@@ -36,7 +44,7 @@ export async function runPipeline(deps, opts) {
     emit('wave-start', { wave: wi, features: wave });
     await mapLimit(wave, cfg.concurrency, async (fid) => {
       const feature = plan.features.find((f) => f.id === fid);
-      const result = await buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, wi, workerEndpoint, workerProfile);
+      const result = await buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, wi, workerEndpoint, workerProfile, okf, repoId);
       if (result) outputs[fid] = result;
     });
     emit('wave-done', { wave: wi, ok: wave.filter((f) => outputs[f]).length, total: wave.length });
@@ -117,12 +125,56 @@ export async function runPipeline(deps, opts) {
   function finish() {
     rec.totals.wallClockMs = Date.now() - started;
     store.writeJson(`${store.runPath(rec.runId)}/run.json`, rec);
+    recordOkf(okf, opts, rec, repoId);
     return rec;
+  }
+
+  function recordOkf(okf, opts, rec, repoId) {
+    if (!okf) return;
+    // Canonical OKF write on success AND failure (HARNESS-SPEC: no exceptions).
+    // One problem type per run keeps project-scoped recall focused. The evidence
+    // is the actual build trace, not a model-generated narrative.
+    const failed = rec.status !== 'verified';
+    const attempted = `Build task: ${opts.task}`;
+    const worked = failed ? '' : `Features verified: ${rec.plan?.features?.map((f) => f.id).join(', ') ?? ''}`;
+    const failedWhat = failed
+      ? (rec.failedFeatures?.length
+          ? `Exhausted features: ${rec.failedFeatures.join(', ')}`
+          : (rec.error ?? 'verification failed'))
+      : '';
+    const lesson = failed
+      ? firstFailureLesson(rec)
+      : `Verified build for: ${opts.task}`;
+    const problemType = rec.plan?.features?.[0]?.id ? `build-${rec.plan.features[0].id}` : 'build';
+    try {
+      okf.record({
+        scope: 'project',
+        repo: repoId,
+        problemType,
+        evidence: { attempted, worked, failed: failedWhat, lesson, stack: scan?.stack, model: cfg.models.orchestrator.model },
+      });
+      rec.okf = { recorded: true, problemType };
+    } catch (err) {
+      // Memory failure must never fail the build.
+      rec.okf = { recorded: false, error: err.message };
+      emit('okf-error', { error: err.message });
+    }
+  }
+
+  function firstFailureLesson(rec) {
+    for (const f of Object.values(rec.features ?? {})) {
+      const reason = f.judgeReasons?.find((r) => r.lesson);
+      if (reason?.lesson) return reason.lesson;
+    }
+    return rec.error ?? 'build failed';
   }
 }
 
-async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, waveIndex = null, workerEndpoint = null, workerProfile = null) {
+async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir, waveIndex = null, workerEndpoint = null, workerProfile = null, okf = null, repoId = null) {
   const { cfg, adapter } = deps;
+  // OKF recall is stable across attempts (pre-prompt retrieval). The retry
+  // `lesson` is a separate, attempt-scoped signal from the judge.
+  const okfContext = okf ? okf.recallContext(feature.description, { scope: 'project', repo: repoId }) : '';
   let lesson = '';
   let freeRetryUsed = false; // exactly ONE free infra retry per feature, whenever TIMEOUT lands
   for (let attempt = 1; attempt <= cfg.maxWorkerAttempts; attempt++) {
@@ -134,7 +186,7 @@ async function buildFeature(api, deps, opts, feature, rec, emit, totals, baseDir
       const pre = await adapter.exec(sid, { cmd: 'npm install --no-audit --no-fund --loglevel=error', timeoutMs: 300_000 });
       emit('preinstall', { feature: feature.id, attempt, exitCode: pre.exitCode });
     }
-    const w = await api.runWorker(cfg, adapter, sb, { feature, lesson, endpoint: workerEndpoint, profile: workerProfile });
+    const w = await api.runWorker(cfg, adapter, sb, { feature, lesson, okfContext, endpoint: workerEndpoint, profile: workerProfile });
     totals.workers.input += w.usage.input; totals.workers.output += w.usage.output;
     if (!w.ok) {
       const infra = w.failureCode === 'TIMEOUT';

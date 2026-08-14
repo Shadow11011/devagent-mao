@@ -8,14 +8,15 @@ import {
 
 // This is the Phase A proof gate: the vendored Prime Agent must import in-process
 // and drive one headless turn through the faux provider (no real API, no IPython
-// kernel, no TUI).
-describe('Prime Agent bridge (in-process)', () => {
+// kernel, no TUI). Sequential because the vendored import is cold-heavy and must
+// not contend with the rest of the suite's transform/import phase.
+describe.sequential('Prime Agent bridge (in-process)', () => {
   it('imports createAgentSession and registerFauxProvider', async () => {
     expect(typeof createAgentSession).toBe('function');
     expect(typeof registerFauxProvider).toBe('function');
   });
 
-  it('drives one headless turn and returns assistant text', { timeout: 30000 }, async () => {
+  it('drives one headless turn and returns assistant text', { timeout: 90000 }, async () => {
     const faux = await registerFauxProvider({
       provider: 'mao-bridge-test',
       models: [
@@ -44,7 +45,7 @@ describe('Prime Agent bridge (in-process)', () => {
     }
   });
 
-  it('runFauxTurn returns the final assistant text', { timeout: 30000 }, async () => {
+  it('runFauxTurn returns the final assistant text', { timeout: 90000 }, async () => {
     const faux = await registerFauxProvider({
       provider: 'mao-bridge-turn',
       models: [
