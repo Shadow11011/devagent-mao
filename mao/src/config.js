@@ -19,6 +19,8 @@ export function loadConfig(overrides = {}) {
     runTimeoutMs: Number(process.env.MAO_RUN_TIMEOUT_MS || 20 * 60_000),
     workerTimeoutMs: Number(process.env.MAO_WORKER_TIMEOUT_MS || 15 * 60_000),
     requestTimeoutMs: Number(process.env.MAO_REQUEST_TIMEOUT_MS || 600_000),
+    recursive: process.env.MAO_RECURSIVE === '1',
+    recursiveMaxDepth: Number(process.env.MAO_RECURSIVE_MAX_DEPTH || 1),
     ...overrides,
   };
 }

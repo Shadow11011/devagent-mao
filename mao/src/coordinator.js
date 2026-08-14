@@ -5,6 +5,7 @@ import { scanProject } from './scanner.js';
 import * as realApi from './api.js';
 import { createOkf } from './okf/index.js';
 import { discoverSkills, formatSkillsForPrompt } from './skills.js';
+import { recursivePlan, decomposeFeatureWithOrchestrator } from './recursive.js';
 
 export async function runPipeline(deps, opts) {
   const { cfg, store, adapter, okf: injectedOkf } = deps;
@@ -35,9 +36,26 @@ export async function runPipeline(deps, opts) {
   let planOut;
   try { planOut = await api.planBuild(cfg, { summary: scan.summary, okfContext, prompt: opts.task, effort: opts.orchestratorEffort }); }
   catch (err) { rec.status = 'plan-failed'; rec.error = err.message; emit('plan-failed', { error: err.message }); return finish(); }
-  const plan = planOut.plan;
-  rec.plan = plan;
+  let plan = planOut.plan;
   addU(totals.orchestrator, planOut.usage);
+
+  // Recursive mode (gated off by default): when enabled, decompose any coarse
+  // feature into ordered leaves before waves/couple/verify run. Off => this block
+  // is skipped and the flat pipeline is byte-for-byte unchanged.
+  if (cfg.recursive) {
+    const decomposeFeature = deps.decomposeFeature ?? decomposeFeatureWithOrchestrator(cfg);
+    const recursiveOut = await recursivePlan(plan, {
+      decomposeFeature,
+      maxDepth: cfg.recursiveMaxDepth,
+    });
+    rec.plan = recursiveOut; // store the decomposed plan on the run record
+    rec.recursive = { enabled: true, maxDepth: cfg.recursiveMaxDepth, featuresBefore: plan.features.length, featuresAfter: recursiveOut.features.length };
+    plan = recursiveOut;
+    emit('recursive-plan', { features: plan.features.map((f) => f.id), waves: plan.waves });
+  } else {
+    rec.plan = plan;
+  }
+
   emit('plan', { features: plan.features.map((f) => f.id), waves: plan.waves });
 
   // materialized working copy that waves build upon
